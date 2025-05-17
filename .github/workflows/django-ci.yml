@@ -1,0 +1,46 @@
+name: Django CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: agency_db
+          POSTGRES_USER: agency_user
+          POSTGRES_PASSWORD: secret123
+        ports: ['5432:5432']
+
+    env:
+      DB_NAME: agency_db
+      DB_USER: agency_user
+      DB_PASSWORD: secret123
+      DB_HOST: localhost
+      DB_PORT: 5432
+      SECRET_KEY: dummy-key
+      DEBUG: 1
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.11
+
+    - name: Install deps
+      run: |
+        pip install -r requirements.txt
+
+    - name: Run migrations
+      run: python manage.py migrate
+
+    - name: Run tests
+      run: python manage.py test
