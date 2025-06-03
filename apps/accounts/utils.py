@@ -10,7 +10,7 @@ def send_verification_email(user, request):
     url = reverse('verify-email')
     full_url = f"http://{domain}{url}?token={token}"
 
-    subject = "Xác minh tài khoản của bạn"
-    message = f"Chào {user.username},\n\nHãy xác minh tài khoản tại liên kết sau:\n{full_url}"
+    subject = "Xác minh tài khoản"
+    message = f"Xin chào {user.username},\n\nVui lòng xác minh tài khoản tại:\n{full_url}"
 
     send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [user.email])

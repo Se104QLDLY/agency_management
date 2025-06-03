@@ -19,8 +19,13 @@ def generate_payment_excel(start_date, end_date):
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
         df.to_excel(writer, sheet_name='BaoCao', index=False)
+
     buffer.seek(0)
-    return buffer
+    response = HttpResponse(buffer.read(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    filename = f"bao_cao_thu_tien_{start_date}_den_{end_date}.xlsx"
+    response['Content-Disposition'] = f'attachment; filename={filename}'
+    return response
+
 
 def generate_debt_report_pdf():
     agencies = Agency.objects.all()
@@ -41,4 +46,4 @@ def generate_debt_report_pdf():
     p.showPage()
     p.save()
     buffer.seek(0)
-    return buffer
+    return HttpResponse(buffer, content_type='application/pdf')

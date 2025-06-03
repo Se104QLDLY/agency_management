@@ -3,14 +3,14 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     PaymentViewSet,
     PaymentExcelReportView,
-    DebtPDFReportView
+    DebtPDFReportView,
 )
 
 router = DefaultRouter()
-router.register(r'payments', PaymentViewSet, basename='payments')
+router.register(r'payments', PaymentViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
-    path('report/payment-excel/', PaymentExcelReportView.as_view(), name='payment-excel'),
-    path('report/debt-pdf/', DebtPDFReportView.as_view(), name='debt-pdf'),
+    path('export/excel/', PaymentExcelReportView.as_view(), name='payment-excel'),
+    path('export/pdf/', DebtPDFReportView.as_view(), name='debt-pdf'),
 ]

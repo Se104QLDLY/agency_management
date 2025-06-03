@@ -12,7 +12,7 @@ class Payment(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
-        if self.pk is None:
+        if self.pk is None:  # chỉ giảm nợ khi tạo mới
             self.agency.debt -= self.amount_collected
             self.agency.save()
         super().save(*args, **kwargs)

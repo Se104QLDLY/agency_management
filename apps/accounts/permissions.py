@@ -12,6 +12,6 @@ class IsAgency(BasePermission):
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.role == 'A3'
 
-class IsAdminOrDistributor(BasePermission):
+class IsAdminOnly(BasePermission):
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role in ['A1', 'A2']
+        return request.user.is_authenticated and request.user.role == 'A1'

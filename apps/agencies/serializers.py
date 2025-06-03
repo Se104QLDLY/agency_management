@@ -49,13 +49,13 @@ class AgencySerializer(serializers.ModelSerializer):
 
         if agency_type and debt > agency_type.max_debt:
             raise serializers.ValidationError(
-                f"Nợ hiện tại ({debt}) vượt quá hạn mức cho phép ({agency_type.max_debt})."
+                f"Nợ hiện tại ({debt}) vượt quá hạn mức ({agency_type.max_debt})."
             )
 
         if district and not self.instance:
             if Agency.objects.filter(district=district).count() >= district.max_agencies:
                 raise serializers.ValidationError(
-                    f"Quận {district.name} đã đạt giới hạn đại lý tối đa ({district.max_agencies})."
+                    f"Quận {district.name} đã vượt giới hạn ({district.max_agencies} đại lý)."
                 )
 
         return data

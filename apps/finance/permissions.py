@@ -1,9 +1,9 @@
 from rest_framework.permissions import BasePermission
 
-class IsAdminOrDistributor(BasePermission):
+class IsDistributorOrAgency(BasePermission):
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role in ['A1', 'A2']
+        return request.user.role in ['A2', 'A3']
 
-class IsAgencySelfOnly(BasePermission):
+class IsAllRoles(BasePermission):
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role == 'A3'
+        return request.user.role in ['A1', 'A2', 'A3']

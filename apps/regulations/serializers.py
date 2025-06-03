@@ -8,8 +8,7 @@ class RegulationSerializer(serializers.ModelSerializer):
         model = Regulation
         fields = [
             'regulation_key', 'regulation_value',
-            'description', 'last_updated_by', 'last_updated_by_username',
-            'updated_at'
+            'description', 'last_updated_by', 'last_updated_by_username', 'updated_at'
         ]
         read_only_fields = ['last_updated_by', 'updated_at']
 
