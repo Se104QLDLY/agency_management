@@ -25,7 +25,7 @@ class Receipt(models.Model):
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     created_at = models.DateField(auto_now_add=True)
     total_amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
-
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="receipts")
     def __str__(self):
         return f"Phiếu nhập #{self.id}"
 
@@ -48,7 +48,7 @@ class Issue(models.Model):
     agency = models.ForeignKey(Agency, on_delete=models.CASCADE)
     created_at = models.DateField(auto_now_add=True)
     total_amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
-
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="issues")
     def __str__(self):
         return f"Phiếu xuất #{self.id}"
 

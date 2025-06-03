@@ -7,46 +7,46 @@ from django.utils.dateparse import parse_date
 
 from .models import Payment
 from .serializers import PaymentSerializer
-from .permissions import IsDistributorOrAdmin
+from .permissions import IsAdminOrDistributor, IsAgencySelfOnly
 from .services import generate_payment_excel, generate_debt_report_pdf
 
 
 class PaymentViewSet(viewsets.ModelViewSet):
-    """
-    API CRUD phiếu thu tiền
-    """
     queryset = Payment.objects.select_related('agency', 'user').all()
     serializer_class = PaymentSerializer
-    permission_classes = [IsAuthenticated, IsDistributorOrAdmin]
+    permission_classes = [IsAuthenticated]
 
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['agency', 'payment_date']
     search_fields = ['agency__name', 'user__username']
 
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'A3':
+            return self.queryset.filter(agency__in=user.agency_set.all())
+        return self.queryset
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'destroy']:
+            return [IsAuthenticated(), IsAdminOrDistributor()]
+        return [IsAuthenticated()]
+
 
 class PaymentExcelReportView(APIView):
-    """
-    Xuất báo cáo phiếu thu ra Excel (.xlsx)
-    Yêu cầu query params: start_date, end_date (YYYY-MM-DD)
-    """
-    permission_classes = [IsAuthenticated, IsDistributorOrAdmin]
+    permission_classes = [IsAuthenticated, IsAdminOrDistributor]
 
     def get(self, request):
         start = request.GET.get('start_date')
         end = request.GET.get('end_date')
         if not start or not end:
-            return HttpResponseBadRequest("Cần truyền start_date và end_date (ví dụ: ?start_date=2024-01-01&end_date=2024-12-31)")
-
+            return HttpResponseBadRequest("Cần truyền start_date và end_date")
         excel_file = generate_payment_excel(parse_date(start), parse_date(end))
         return FileResponse(excel_file, as_attachment=True, filename="bao_cao_thu_tien.xlsx")
 
 
 class DebtPDFReportView(APIView):
-    """
-    Xuất báo cáo công nợ (tổng nợ các đại lý) dạng PDF
-    """
-    permission_classes = [IsAuthenticated, IsDistributorOrAdmin]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        pdf = generate_debt_report_pdf()
-        return FileResponse(pdf, as_attachment=True, filename="bao_cao_cong_no.pdf")
+        buffer = generate_debt_report_pdf()
+        return FileResponse(buffer, as_attachment=True, filename="bao_cao_cong_no.pdf")

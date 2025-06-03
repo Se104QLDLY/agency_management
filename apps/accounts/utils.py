@@ -6,7 +6,6 @@ from rest_framework_simplejwt.tokens import RefreshToken
 def send_verification_email(user, request):
     refresh = RefreshToken.for_user(user)
     token = str(refresh.access_token)
-
     domain = request.get_host()
     url = reverse('verify-email')
     full_url = f"http://{domain}{url}?token={token}"

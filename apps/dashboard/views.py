@@ -1,51 +1,48 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Sum, Count
-from datetime import datetime
-from apps.inventory.models import Issue
+from django.db.models import Sum
+from django.utils.timezone import now
+from datetime import timedelta
+
+from apps.inventory.models import Issue, Receipt
 from apps.finance.models import Payment
 from apps.agencies.models import Agency
-from django.db.models.functions import TruncMonth
+from apps.accounts.permissions import IsAdminOrDistributor
 
 
 class DashboardOverviewAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    """
+    Tổng quan dashboard: tổng số đơn xuất, nhập, tổng tiền thu, công nợ
+    """
+    permission_classes = [IsAuthenticated, IsAdminOrDistributor]
 
     def get(self, request):
-        total_agencies = Agency.objects.count()
-        total_debt = Agency.objects.aggregate(total_debt=Sum('debt'))['total_debt'] or 0
+        today = now().date()
+        week_ago = today - timedelta(days=7)
 
-        current_month = datetime.now().month
-        current_year = datetime.now().year
-
-        total_sales = (
-            Issue.objects.filter(issue_date__month=current_month, issue_date__year=current_year)
-            .aggregate(total=Sum('total_amount'))['total'] or 0
-        )
-
-        top_debtors = (
-            Agency.objects.order_by('-debt')[:5]
-            .values('name', 'debt', 'agency_type__type_name')
-        )
-
-        return Response({
-            'total_agencies': total_agencies,
-            'total_debt': total_debt,
-            'total_sales': total_sales,
-            'top_debtors': top_debtors
-        })
+        data = {
+            "total_issues": Issue.objects.count(),
+            "total_receipts": Receipt.objects.count(),
+            "total_payments": Payment.objects.aggregate(total=Sum("amount_collected"))["total"] or 0,
+            "total_debt": Agency.objects.aggregate(total=Sum("debt"))["total"] or 0,
+            "weekly_issues": Issue.objects.filter(issue_date__gte=week_ago).count(),
+            "weekly_receipts": Receipt.objects.filter(receipt_date__gte=week_ago).count(),
+        }
+        return Response(data)
 
 
 class SalesChartAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    """
+    Trả về số đơn xuất hàng theo ngày trong 7 ngày gần nhất
+    """
+    permission_classes = [IsAuthenticated, IsAdminOrDistributor]
 
     def get(self, request):
-        sales_by_month = (
-            Issue.objects
-            .annotate(month=TruncMonth('issue_date'))
-            .values('month')
-            .annotate(total=Sum('total_amount'))
-            .order_by('month')
-        )
-        return Response(sales_by_month)
+        today = now().date()
+        data = []
+        for i in range(7):
+            day = today - timedelta(days=i)
+            count = Issue.objects.filter(issue_date=day).count()
+            data.append({"date": str(day), "issues": count})
+        return Response(list(reversed(data)))

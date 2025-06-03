@@ -15,7 +15,3 @@ class IsAgency(BasePermission):
 class IsAdminOrDistributor(BasePermission):
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.role in ['A1', 'A2']
-
-class IsAdminDistributorAgency(BasePermission):
-    def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role in ['A1', 'A2', 'A3']

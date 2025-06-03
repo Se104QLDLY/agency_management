@@ -1,13 +1,9 @@
 from rest_framework import viewsets, filters
 from .models import Unit, Item, Receipt, ReceiptDetail, Issue, IssueDetail
-from .serializers import (
-    UnitSerializer, ItemSerializer,
-    ReceiptSerializer, ReceiptDetailSerializer,
-    IssueSerializer, IssueDetailSerializer
-)
+from .serializers import *
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.permissions import IsAuthenticated
-from .permissions import IsAdminOrDistributor
+from .permissions import IsAdminOrDistributor, IsAgencyItselfOrReadOnly
 
 class UnitViewSet(viewsets.ModelViewSet):
     queryset = Unit.objects.all()
@@ -24,7 +20,11 @@ class ItemViewSet(viewsets.ModelViewSet):
 class ReceiptViewSet(viewsets.ModelViewSet):
     queryset = Receipt.objects.all()
     serializer_class = ReceiptSerializer
-    permission_classes = [IsAuthenticated, IsAdminOrDistributor]
+
+    def get_permissions(self):
+        if self.request.user.role in ['A1', 'A2']:
+            return [IsAuthenticated(), IsAdminOrDistributor()]
+        return [IsAuthenticated()]
 
 class ReceiptDetailViewSet(viewsets.ModelViewSet):
     queryset = ReceiptDetail.objects.all()
@@ -34,9 +34,15 @@ class ReceiptDetailViewSet(viewsets.ModelViewSet):
 class IssueViewSet(viewsets.ModelViewSet):
     queryset = Issue.objects.all()
     serializer_class = IssueSerializer
-    permission_classes = [IsAuthenticated, IsAdminOrDistributor]
+
+    def get_permissions(self):
+        if self.request.user.role in ['A1', 'A2']:
+            return [IsAuthenticated(), IsAdminOrDistributor()]
+        elif self.request.user.role == 'A3':
+            return [IsAuthenticated(), IsAgencyItselfOrReadOnly()]
+        return [IsAuthenticated()]
 
 class IssueDetailViewSet(viewsets.ModelViewSet):
     queryset = IssueDetail.objects.all()
     serializer_class = IssueDetailSerializer
-    permission_classes = [IsAuthenticated, IsAdminOrDistributor]
+    permission_classes = [IsAuthenticated]
