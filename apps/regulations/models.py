@@ -12,3 +12,6 @@ class Regulation(models.Model):
 
     def __str__(self):
         return f"{self.regulation_key}: {self.regulation_value}"
+
+    class Meta:
+        db_table = 'config.Regulation'

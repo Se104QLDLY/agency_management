@@ -8,6 +8,9 @@ class District(models.Model):
     def __str__(self):
         return f"{self.name}, {self.city}"
 
+    class Meta:
+        db_table = 'agency.District'
+
 class AgencyType(models.Model):
     type_name = models.CharField(max_length=100)
     max_debt = models.DecimalField(max_digits=15, decimal_places=2)
@@ -15,6 +18,9 @@ class AgencyType(models.Model):
 
     def __str__(self):
         return self.type_name
+
+    class Meta:
+        db_table = 'agency.AgencyType'
 
 class Agency(models.Model):
     name = models.CharField(max_length=150)
@@ -31,3 +37,6 @@ class Agency(models.Model):
 
     def __str__(self):
         return self.name
+
+    class Meta:
+        db_table = 'agency.AGENCY'

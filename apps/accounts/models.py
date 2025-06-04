@@ -39,6 +39,9 @@ class Account(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return f"{self.username} ({self.role})"
 
+    class Meta:
+        db_table = 'auth.ACCOUNT'
+
 class UserProfile(models.Model):
     account = models.OneToOneField(Account, on_delete=models.CASCADE)
     full_name = models.CharField(max_length=100)
@@ -47,8 +50,14 @@ class UserProfile(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        db_table = 'auth.USER'
+
 class LoginHistory(models.Model):
     account = models.ForeignKey(Account, on_delete=models.CASCADE)
     ip_address = models.CharField(max_length=45)
     device = models.CharField(max_length=100)
     login_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'auth.LoginHistory'

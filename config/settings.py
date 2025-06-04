@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
+from django.db import connection
 
 load_dotenv()
 
@@ -80,6 +81,7 @@ DATABASES = {
     }
 }
 
+print(connection.settings_dict['NAME'])
 
 AUTH_USER_MODEL = 'accounts.Account'
 
