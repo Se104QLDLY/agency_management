@@ -20,6 +20,18 @@ class AccountAdmin(UserAdmin):
     search_fields = ('username', 'email')
     ordering = ('username',)
 
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ('id', 'account', 'full_name', 'phone', 'address', 'created_at', 'updated_at')
+    search_fields = ('full_name', 'phone', 'address', 'account__username')
+    list_filter = ('created_at',)
+    date_hierarchy = 'created_at'
+
+@admin.register(LoginHistory)
+class LoginHistoryAdmin(admin.ModelAdmin):
+    list_display = ('id', 'account', 'ip_address', 'device', 'login_time')
+    search_fields = ('account__username', 'ip_address', 'device')
+    list_filter = ('login_time',)
+    date_hierarchy = 'login_time'
+
 admin.site.register(Account, AccountAdmin)
-admin.site.register(UserProfile)
-admin.site.register(LoginHistory)
