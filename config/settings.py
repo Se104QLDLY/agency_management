@@ -72,13 +72,14 @@ ASGI_APPLICATION = 'config.asgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv("POSTGRES_DB", "agency_management"),
-        'USER': os.getenv("POSTGRES_USER", "agency_user"),
-        'PASSWORD': os.getenv("POSTGRES_PASSWORD", "password"),
-        'HOST': os.getenv("POSTGRES_HOST", "localhost"),
-        'PORT': os.getenv("POSTGRES_PORT", "5432"),
+        'NAME': 'QuanLyDaiLy',
+        'USER': 'postgres',  # Tên user bạn đang dùng trong pgAdmin
+        'PASSWORD': '12082005',  # Nhập đúng mật khẩu tài khoản postgres
+        'HOST': 'localhost',
+        'PORT': '5432',
     }
 }
+
 
 AUTH_USER_MODEL = 'accounts.Account'
 
