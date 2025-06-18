@@ -53,11 +53,12 @@ class Account(models.Model):
     objects = AccountManager()
 
     class Meta:
-        db_table = "account"
+        db_table = 'auth"."account'
         ordering = ["username"]
         indexes = [
             models.Index(fields=["account_role"]),
         ]
+        managed = False
 
     def __str__(self):
         return f"{self.username} ({self.account_role})"
@@ -76,11 +77,12 @@ class User(models.Model):
     objects = models.Manager()
 
     class Meta:
-        db_table = "user"
+        db_table = 'auth"."user'
         ordering = ["full_name"]
         indexes = [
             models.Index(fields=["account"]),
         ]
+        managed = False
 
     def __str__(self):
         return self.full_name

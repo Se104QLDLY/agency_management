@@ -15,8 +15,9 @@ class Unit(models.Model):
     unit_name = models.CharField(max_length=50, unique=True, db_column="unit_name")
 
     class Meta:
-        db_table = "unit"
+        db_table = 'inventory"."unit'
         ordering = ["unit_name"]
+        managed = False
 
     def __str__(self):
         return self.unit_name
@@ -38,11 +39,12 @@ class Item(models.Model):
     objects = ItemQuerySet.as_manager()
 
     class Meta:
-        db_table = "item"
+        db_table = 'inventory"."item'
         ordering = ["item_name"]
         indexes = [
             models.Index(fields=["unit"]),
         ]
+        managed = False
 
     def __str__(self):
         return self.item_name
@@ -57,12 +59,13 @@ class Receipt(models.Model):
     created_at = models.DateTimeField(null=True, blank=True, db_column="created_at")
 
     class Meta:
-        db_table = "receipt"
+        db_table = 'inventory"."receipt'
         ordering = ["-receipt_date"]
         indexes = [
             models.Index(fields=["user_id"]),
             models.Index(fields=["agency_id"]),
         ]
+        managed = False
 
     def __str__(self):
         return f"Receipt #{self.receipt_id}"
@@ -77,13 +80,14 @@ class Receiptdetail(models.Model):
     line_total = models.DecimalField(max_digits=18, decimal_places=2, db_column="line_total", validators=[MinValueValidator(0.01)])
 
     class Meta:
-        db_table = "receiptdetail"
+        db_table = 'inventory"."receiptdetail'
         unique_together = ("receipt", "item")
         ordering = ["receipt", "item"]
         indexes = [
             models.Index(fields=["receipt"]),
             models.Index(fields=["item"]),
         ]
+        managed = False
 
     def __str__(self):
         return f"ReceiptDetail #{self.receipt_detail_id}"
@@ -98,12 +102,13 @@ class Issue(models.Model):
     created_at = models.DateTimeField(null=True, blank=True, db_column="created_at")
 
     class Meta:
-        db_table = "issue"
+        db_table = 'inventory"."issue'
         ordering = ["-issue_date"]
         indexes = [
             models.Index(fields=["agency_id"]),
             models.Index(fields=["user_id"]),
         ]
+        managed = False
 
     def __str__(self):
         return f"Issue #{self.issue_id}"
@@ -118,13 +123,14 @@ class Issuedetail(models.Model):
     line_total = models.DecimalField(max_digits=18, decimal_places=2, db_column="line_total", validators=[MinValueValidator(0.01)])
 
     class Meta:
-        db_table = "issuedetail"
+        db_table = 'inventory"."issuedetail'
         unique_together = ("issue", "item")
         ordering = ["issue", "item"]
         indexes = [
             models.Index(fields=["issue"]),
             models.Index(fields=["item"]),
         ]
+        managed = False
 
     def __str__(self):
         return f"IssueDetail #{self.issue_detail_id}"

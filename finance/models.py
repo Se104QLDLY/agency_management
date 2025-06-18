@@ -20,12 +20,13 @@ class Payment(models.Model):
     created_at = models.DateTimeField(null=True, blank=True, db_column="created_at")
 
     class Meta:
-        db_table = "payment"
+        db_table = 'finance"."payment'
         ordering = ["-payment_date"]
         indexes = [
             models.Index(fields=["agency_id"]),
             models.Index(fields=["user_id"]),
         ]
+        managed = False
 
     def clean(self):
         from agency.models import Agency
@@ -58,12 +59,13 @@ class Report(models.Model):
     objects = ReportManager()
 
     class Meta:
-        db_table = "report"
+        db_table = 'finance"."report'
         ordering = ["-report_date"]
         indexes = [
             models.Index(fields=["report_type"]),
             models.Index(fields=["created_by"]),
         ]
+        managed = False
 
     def __str__(self):
         return f"Report #{self.report_id} - {self.report_type} ({self.report_date})"
@@ -76,7 +78,7 @@ class DebtSummary(models.Model):
 
     class Meta:
         managed = False
-        db_table = "v_debt_summary"
+        db_table = 'finance"."v_debt_summary'
 
 
 class SalesMonthly(models.Model):
@@ -85,5 +87,5 @@ class SalesMonthly(models.Model):
 
     class Meta:
         managed = False
-        db_table = "v_sales_monthly"
+        db_table = 'finance"."v_sales_monthly'
 

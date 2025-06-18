@@ -16,8 +16,9 @@ class AgencyType(models.Model):
     description = models.TextField(null=True, db_column="description")
 
     class Meta:
-        db_table = "agencytype"
+        db_table = 'agency"."agencytype'
         ordering = ["type_name"]
+        managed = False
 
     def __str__(self):
         return self.type_name
@@ -29,8 +30,9 @@ class District(models.Model):
     max_agencies = models.IntegerField(db_column="max_agencies")
 
     class Meta:
-        db_table = "district"
+        db_table = 'agency"."district'
         ordering = ["city_name", "district_name"]
+        managed = False
 
     def __str__(self):
         return f"{self.district_name} ({self.city_name})"
@@ -63,12 +65,13 @@ class Agency(models.Model):
     objects = AgencyQuerySet.as_manager()
 
     class Meta:
-        db_table = "agency"
+        db_table = 'agency"."agency'
         ordering = ["agency_name"]
         indexes = [
             models.Index(fields=["agency_type"]),
             models.Index(fields=["district"]),
         ]
+        managed = False
 
     def __str__(self):
         return self.agency_name
@@ -83,11 +86,12 @@ class StaffAgency(models.Model):
     )
 
     class Meta:
-        db_table = "staffagency"
+        db_table = 'agency"."staffagency'
         constraints = [
             models.UniqueConstraint(fields=["staff_id", "agency"], name="unique_staff_agency")
         ]
         ordering = ["staff_id", "agency"]
+        managed = False
 
     def __str__(self):
         return f"Staff {self.staff_id} - {self.agency.agency_name}"

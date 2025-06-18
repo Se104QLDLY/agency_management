@@ -23,10 +23,11 @@ class Regulation(models.Model):
     objects = RegulationManager()
 
     class Meta:
-        db_table = 'regulation'
+        db_table = 'config"."regulation'
         ordering = ['regulation_key']
         verbose_name = 'Regulation'
         verbose_name_plural = 'Regulations'
+        managed = False
 
     def clean(self):
         if not re.match(r'^[A-Za-z0-9_]+$', self.regulation_key):
