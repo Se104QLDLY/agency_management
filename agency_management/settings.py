@@ -83,8 +83,8 @@ DATABASES = {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": "QuanLyDaiLy",
         "USER": "postgres",
-        "PASSWORD": "010171",
-        "HOST": "127.0.0.1",
+        "PASSWORD": "12082005",
+        "HOST": "localhost",
         "PORT": "5432",
         "OPTIONS": {
             "options": "-c search_path=public,auth,agency,inventory,finance,config"
