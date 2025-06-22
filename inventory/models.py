@@ -33,7 +33,6 @@ class Item(models.Model):
     )
     stock_quantity = models.PositiveIntegerField(db_column="stock_quantity")
     description = models.TextField(null=True, blank=True, db_column="description")
-    created_at = models.DateTimeField(null=True, blank=True, db_column="created_at")
     updated_at = models.DateTimeField(null=True, blank=True, db_column="updated_at")
 
     objects = ItemQuerySet.as_manager()
