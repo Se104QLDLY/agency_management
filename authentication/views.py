@@ -19,12 +19,13 @@ from .serializers import (
     LoginSerializer, UserProfileSerializer, ChangePasswordSerializer,
     UserRegistrationSerializer, UserListSerializer, AccountSerializer
 )
+from .permissions import CookieJWTAuthentication, UserPermission, ProfilePermission, PublicPermission
 
 
 @method_decorator(csrf_exempt, name='dispatch')
 class CustomLoginView(APIView):
     """Custom login view that supports both email and username login"""
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [PublicPermission]
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
@@ -76,7 +77,7 @@ class CustomLoginView(APIView):
 @method_decorator(csrf_exempt, name='dispatch')
 class CustomTokenRefreshView(APIView):
     """Custom token refresh view that works with HttpOnly cookies"""
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [PublicPermission]
 
     def post(self, request):
         refresh_token = request.COOKIES.get('refresh')
@@ -103,7 +104,8 @@ class CustomTokenRefreshView(APIView):
 
 class LogoutView(APIView):
     """Logout view that blacklists refresh token and clears cookies"""
-    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [ProfilePermission]
 
     def post(self, request):
         try:
@@ -123,15 +125,30 @@ class LogoutView(APIView):
 class CurrentUserView(generics.RetrieveUpdateAPIView):
     """Get and update current user profile"""
     serializer_class = UserProfileSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [ProfilePermission]
 
     def get_object(self):
-        return User.objects.select_related('account').get(user_id=self.request.user.user_id)
+        try:
+            user = self.request.user
+            print(f"DEBUG: request.user = {user}")
+            print(f"DEBUG: type(request.user) = {type(user)}")
+            print(f"DEBUG: hasattr user_id = {hasattr(user, 'user_id')}")
+            if hasattr(user, 'user_id'):
+                print(f"DEBUG: user.user_id = {user.user_id}")
+                return User.objects.select_related('account').get(user_id=user.user_id)
+            else:
+                print(f"DEBUG: user attributes = {dir(user)}")
+                raise Exception(f"User object has no user_id attribute: {type(user)}")
+        except Exception as e:
+            print(f"DEBUG ERROR: {str(e)}")
+            raise
 
 
 class ChangePasswordView(APIView):
     """Change user password"""
-    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [ProfilePermission]
 
     def put(self, request):
         serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
@@ -146,53 +163,59 @@ class ChangePasswordView(APIView):
 class UserRegistrationView(generics.CreateAPIView):
     """User registration endpoint"""
     serializer_class = UserRegistrationSerializer
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [PublicPermission]
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
             
-            # Auto-login after registration
-            refresh = RefreshToken.for_user(user)
-            access_token = refresh.access_token
-            
-            response = Response({
-                'user': {
-                    'id': user.user_id,
-                    'username': user.account.username,
-                    'full_name': user.full_name,
-                    'email': user.email,
-                    'account_role': user.account.account_role
-                }
-            }, status=status.HTTP_201_CREATED)
-            
-            # Set HttpOnly cookies
-            response.set_cookie(
-                'access',
-                str(access_token),
-                max_age=60 * 60 * 24,  # 1 day
-                httponly=True,
-                secure=False,  # Set to True in production with HTTPS
-                samesite='Lax'
-            )
-            response.set_cookie(
-                'refresh',
-                str(refresh),
-                max_age=60 * 60 * 24 * 7,  # 7 days
-                httponly=True,
-                secure=False,  # Set to True in production with HTTPS
-                samesite='Lax'
-            )
-            
-            return response
+            # Auto-login after registration - Fix for custom user model
+            try:
+                refresh = RefreshToken()
+                refresh['user_id'] = user.user_id  # Use custom user_id field
+                access_token = refresh.access_token
+                access_token['user_id'] = user.user_id
+                
+                response = Response({
+                    'user': {
+                        'id': user.user_id,
+                        'username': user.account.username,
+                        'full_name': user.full_name,
+                        'email': user.email,
+                        'account_role': user.account.account_role
+                    }
+                }, status=status.HTTP_201_CREATED)
+                
+                # Set HttpOnly cookies
+                response.set_cookie(
+                    'access',
+                    str(access_token),
+                    max_age=60 * 60 * 24,  # 1 day
+                    httponly=True,
+                    secure=False,  # Set to True in production with HTTPS
+                    samesite='Lax'
+                )
+                response.set_cookie(
+                    'refresh',
+                    str(refresh),
+                    max_age=60 * 60 * 24 * 7,  # 7 days
+                    httponly=True,
+                    secure=False,  # Set to True in production with HTTPS
+                    samesite='Lax'
+                )
+                
+                return response
+            except Exception as e:
+                return Response({'error': f'Token generation failed: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class UserViewSet(ModelViewSet):
     """ViewSet for managing users (admin only)"""
     queryset = User.objects.select_related('account').all()
-    permission_classes = []  # Temporarily disable for testing
+    permission_classes = []  # Will be set by get_permissions()
+    authentication_classes = []  # Will be set by get_authenticators()
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['account__account_role']
     search_fields = ['full_name', 'email', 'account__username']
@@ -206,11 +229,13 @@ class UserViewSet(ModelViewSet):
             return UserRegistrationSerializer
         return UserProfileSerializer
 
+    def get_authenticators(self):
+        """Return list of authentication classes"""
+        return [CookieJWTAuthentication()]
+    
     def get_permissions(self):
         """Admin required for user management"""
-        if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            return [permissions.IsAuthenticated()]
-        return [permissions.IsAuthenticated()]
+        return [UserPermission()]
 
     def perform_create(self, serializer):
         # Only admin can create users with specific roles
@@ -226,8 +251,11 @@ class UserViewSet(ModelViewSet):
 # Utility function to create JWT for user
 def create_jwt_for_user(user):
     """Helper function to create JWT tokens for a user"""
-    refresh = RefreshToken.for_user(user)
+    refresh = RefreshToken()
+    refresh['user_id'] = user.user_id  # Use custom user_id field
+    access_token = refresh.access_token
+    access_token['user_id'] = user.user_id
     return {
         'refresh': str(refresh),
-        'access': str(refresh.access_token),
+        'access': str(access_token),
     }

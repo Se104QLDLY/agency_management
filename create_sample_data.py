@@ -15,7 +15,7 @@ django.setup()
 
 from agency.models import AgencyType, District, Agency
 from authentication.models import User, Account
-from inventory.models import Unit, Item, Receipt, Receiptdetail, Issue, Issuedetail
+from inventory.models import Unit, Item, Receipt, ReceiptDetail, Issue, IssueDetail
 from finance.models import Payment, Report
 from regulation.models import Regulation
 
@@ -241,7 +241,7 @@ def create_sample_data():
                 # Add receipt details
                 item = Item.objects.first()
                 if item:
-                    detail, detail_created = Receiptdetail.objects.get_or_create(
+                    detail, detail_created = ReceiptDetail.objects.get_or_create(
                         receipt=receipt,
                         item=item,
                         defaults={
@@ -386,7 +386,7 @@ def create_sample_data():
                 # Add receipt details
                 item = Item.objects.first()
                 if item:
-                    detail, detail_created = Receiptdetail.objects.get_or_create(
+                    detail, detail_created = ReceiptDetail.objects.get_or_create(
                         receipt=receipt,
                         item=item,
                         defaults={

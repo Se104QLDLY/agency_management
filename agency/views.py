@@ -16,6 +16,7 @@ from .serializers import (
     DistrictSerializer,
     StaffAgencySerializer
 )
+from authentication.permissions import CookieJWTAuthentication, AgencyPermission
 
 
 class AgencyTypeViewSet(viewsets.ModelViewSet):
@@ -25,7 +26,8 @@ class AgencyTypeViewSet(viewsets.ModelViewSet):
     """
     queryset = AgencyType.objects.all()
     serializer_class = AgencyTypeSerializer
-    permission_classes = [AllowAny]  # Temporarily allow public access for testing
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [AgencyPermission]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['type_name', 'description']
     ordering_fields = ['type_name', 'max_debt']
@@ -39,7 +41,8 @@ class DistrictViewSet(viewsets.ModelViewSet):
     """
     queryset = District.objects.all()
     serializer_class = DistrictSerializer
-    permission_classes = [AllowAny]  # Temporarily allow public access for testing
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [AgencyPermission]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['district_name', 'city_name']
     filterset_fields = ['city_name']
@@ -73,7 +76,8 @@ class AgencyViewSet(viewsets.ModelViewSet):
     Register → Approve → Operate → Block/Unblock
     """
     queryset = Agency.objects.all()
-    permission_classes = [AllowAny]  # Temporarily allow public access for testing
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [AgencyPermission]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['agency_name', 'email', 'phone_number', 'representative']
     filterset_fields = ['agency_type', 'district', 'debt_amount']
@@ -248,7 +252,8 @@ class StaffAgencyViewSet(viewsets.ModelViewSet):
     """
     queryset = StaffAgency.objects.select_related('agency')
     serializer_class = StaffAgencySerializer
-    permission_classes = [AllowAny]  # Temporarily allow public access for testing
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [AgencyPermission]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['staff_id', 'agency']
 

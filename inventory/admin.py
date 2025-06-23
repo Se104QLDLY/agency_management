@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Unit, Item, Receipt, Receiptdetail, Issue, Issuedetail
+from .models import Unit, Item, Receipt, ReceiptDetail, Issue, IssueDetail
 
 class ItemInline(admin.TabularInline):
     model = Item
@@ -7,14 +7,14 @@ class ItemInline(admin.TabularInline):
     fields = ("item_name", "unit", "price", "stock_quantity")
     show_change_link = True
 
-class ReceiptdetailInline(admin.TabularInline):
-    model = Receiptdetail
+class ReceiptDetailInline(admin.TabularInline):
+    model = ReceiptDetail
     extra = 0
     fields = ("item", "quantity", "unit_price", "line_total")
     show_change_link = True
 
-class IssuedetailInline(admin.TabularInline):
-    model = Issuedetail
+class IssueDetailInline(admin.TabularInline):
+    model = IssueDetail
     extra = 0
     fields = ("item", "quantity", "unit_price", "line_total")
     show_change_link = True
@@ -40,11 +40,11 @@ class ReceiptAdmin(admin.ModelAdmin):
     search_fields = ("user_id", "agency_id")
     list_filter = ("receipt_date",)
     readonly_fields = ("created_at",)
-    inlines = [ReceiptdetailInline]
+    inlines = [ReceiptDetailInline]
 
-@admin.register(Receiptdetail)
-class ReceiptdetailAdmin(admin.ModelAdmin):
-    """Admin interface for Receiptdetail model."""
+@admin.register(ReceiptDetail)
+class ReceiptDetailAdmin(admin.ModelAdmin):
+    """Admin interface for ReceiptDetail model."""
     list_display = ("receipt_detail_id", "receipt", "item", "quantity", "unit_price", "line_total")
     search_fields = ("receipt__receipt_id", "item__item_name")
     list_filter = ("receipt", "item")
@@ -56,11 +56,11 @@ class IssueAdmin(admin.ModelAdmin):
     search_fields = ("agency_id", "user_id")
     list_filter = ("issue_date",)
     readonly_fields = ("created_at",)
-    inlines = [IssuedetailInline]
+    inlines = [IssueDetailInline]
 
-@admin.register(Issuedetail)
-class IssuedetailAdmin(admin.ModelAdmin):
-    """Admin interface for Issuedetail model."""
+@admin.register(IssueDetail)
+class IssueDetailAdmin(admin.ModelAdmin):
+    """Admin interface for IssueDetail model."""
     list_display = ("issue_detail_id", "issue", "item", "quantity", "unit_price", "line_total")
     search_fields = ("issue__issue_id", "item__item_name")
     list_filter = ("issue", "item")

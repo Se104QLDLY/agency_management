@@ -12,6 +12,9 @@ from .serializers import (
     ReceiptListSerializer, ReceiptDetailNestedSerializer, ReceiptCreateSerializer,
     IssueListSerializer, IssueDetailNestedSerializer, IssueCreateSerializer
 )
+from authentication.permissions import CookieJWTAuthentication, InventoryPermission
+from .services import InventoryService
+from authentication.exceptions import DebtLimitExceeded, OutOfStock
 
 
 class UnitViewSet(viewsets.ModelViewSet):
@@ -20,7 +23,8 @@ class UnitViewSet(viewsets.ModelViewSet):
     """
     queryset = Unit.objects.all()
     serializer_class = UnitSerializer
-    permission_classes = []  # Temporarily disable for testing
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [InventoryPermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['unit_name']
     ordering_fields = ['unit_name']
@@ -37,7 +41,8 @@ class ItemViewSet(viewsets.ModelViewSet):
     DELETE /api/v1/inventory/items/{id}/ - Soft delete item
     """
     queryset = Item.objects.all()
-    permission_classes = []  # Temporarily disable for testing
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [InventoryPermission]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['unit', 'stock_quantity']
     search_fields = ['item_name', 'description']
@@ -93,7 +98,8 @@ class ReceiptViewSet(viewsets.ModelViewSet):
     GET /api/v1/inventory/receipts/{id}/ - Receipt detail with items
     """
     queryset = Receipt.objects.all()
-    permission_classes = []  # Temporarily disable for testing
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [InventoryPermission]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['agency_id', 'user_id', 'receipt_date']
     ordering_fields = ['receipt_date', 'total_amount', 'created_at']
@@ -122,14 +128,16 @@ class ReceiptViewSet(viewsets.ModelViewSet):
         return queryset
     
     def create(self, request, *args, **kwargs):
-        """Create receipt with items"""
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        receipt = serializer.save()
-        
-        # Return detailed response
-        detail_serializer = ReceiptDetailNestedSerializer(receipt)
-        return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
+        """Create receipt with items using business logic service"""
+        try:
+            receipt = InventoryService.create_receipt(request.data, request.user)
+            detail_serializer = ReceiptDetailNestedSerializer(receipt)
+            return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class IssueViewSet(viewsets.ModelViewSet):
@@ -140,7 +148,8 @@ class IssueViewSet(viewsets.ModelViewSet):
     GET /api/v1/inventory/issues/{id}/ - Issue detail with debt impact
     """
     queryset = Issue.objects.all()
-    permission_classes = []  # Temporarily disable for testing
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [InventoryPermission]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['agency_id', 'user_id', 'issue_date']
     ordering_fields = ['issue_date', 'total_amount', 'created_at']
@@ -169,30 +178,19 @@ class IssueViewSet(viewsets.ModelViewSet):
         return queryset
     
     def create(self, request, *args, **kwargs):
-        """Create issue with stock and debt validation"""
-        serializer = self.get_serializer(data=request.data)
-        
+        """Create issue with stock and debt validation using business logic service"""
         try:
-            serializer.is_valid(raise_exception=True)
-            issue = serializer.save()
-            
-            # Return detailed response
+            issue = InventoryService.create_issue(request.data, request.user)
             detail_serializer = IssueDetailNestedSerializer(issue)
             return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
-            
-        except Exception as e:
-            # Handle business rule violations
-            if 'debt_limit' in str(e):
-                return Response(
-                    serializer.errors,
-                    status=status.HTTP_409_CONFLICT
-                )
-            elif 'stock' in str(e).lower():
-                return Response(
-                    {'error': 'OUT_OF_STOCK', 'details': serializer.errors},
-                    status=status.HTTP_409_CONFLICT
-                )
+        except (DebtLimitExceeded, OutOfStock) as e:
+            # Business rule violations - handled by custom exception handler
             raise
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
     
     @action(detail=False, methods=['get'])
     def by_agency(self, request):

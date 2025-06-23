@@ -14,6 +14,8 @@ from .serializers import (
 )
 from agency.models import Agency
 from inventory.models import Issue
+from authentication.permissions import CookieJWTAuthentication, FinancePermission
+from .services import FinanceService
 
 
 class PaymentViewSet(viewsets.ModelViewSet):
@@ -24,7 +26,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
     GET /api/v1/finance/payments/{id}/ - Payment detail
     """
     queryset = Payment.objects.all()
-    permission_classes = []  # Temporarily disable for testing
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [FinancePermission]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['agency_id', 'user_id', 'payment_date']
     ordering_fields = ['payment_date', 'amount_collected', 'created_at']
@@ -53,14 +56,21 @@ class PaymentViewSet(viewsets.ModelViewSet):
         return queryset
     
     def create(self, request, *args, **kwargs):
-        """Create payment and update agency debt"""
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        payment = serializer.save()
-        
-        # Return detailed response
-        detail_serializer = PaymentDetailSerializer(payment)
-        return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
+        """Create payment and update agency debt using business logic service"""
+        try:
+            payment, debt_info = FinanceService.create_payment(request.data, request.user)
+            
+            # Return detailed response with debt information
+            detail_serializer = PaymentDetailSerializer(payment)
+            response_data = detail_serializer.data
+            response_data['debt_info'] = debt_info
+            
+            return Response(response_data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class ReportViewSet(viewsets.ModelViewSet):
@@ -71,7 +81,8 @@ class ReportViewSet(viewsets.ModelViewSet):
     GET /api/v1/finance/reports/{id}/ - Report detail
     """
     queryset = Report.objects.all()
-    permission_classes = []  # Temporarily disable for testing
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [FinancePermission]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['report_type', 'created_by']
     ordering_fields = ['report_date', 'created_at']
@@ -93,7 +104,8 @@ class DebtViewSet(viewsets.ViewSet):
     GET /api/v1/finance/debts/summary/ - Debt summary by agency
     GET /api/v1/finance/debts/aging/ - Debt aging analysis
     """
-    permission_classes = []  # Temporarily disable for testing
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [FinancePermission]
     
     def list(self, request):
         """Get all debt transactions with filters"""

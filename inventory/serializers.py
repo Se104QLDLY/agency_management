@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Unit, Item, Receipt, Receiptdetail, Issue, Issuedetail
+from .models import Unit, Item, Receipt, ReceiptDetail, Issue, IssueDetail
 from agency.models import Agency
 from authentication.models import User
 
@@ -47,7 +47,7 @@ class ReceiptDetailSerializer(serializers.ModelSerializer):
     item_name = serializers.CharField(source='item.item_name', read_only=True)
     
     class Meta:
-        model = Receiptdetail
+        model = ReceiptDetail
         fields = [
             'receipt_detail_id', 'item', 'item_name', 
             'quantity', 'unit_price', 'line_total'
@@ -56,7 +56,7 @@ class ReceiptDetailSerializer(serializers.ModelSerializer):
 
 class ReceiptDetailCreateSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Receiptdetail
+        model = ReceiptDetail
         fields = ['item', 'quantity', 'unit_price']
         
     def validate_quantity(self, value):
@@ -133,7 +133,7 @@ class ReceiptCreateSerializer(serializers.ModelSerializer):
         # Create receipt details
         for item_data in items_data:
             line_total = item_data['quantity'] * item_data['unit_price']
-            Receiptdetail.objects.create(
+            ReceiptDetail.objects.create(
                 receipt=receipt,
                 line_total=line_total,
                 **item_data
@@ -151,7 +151,7 @@ class IssueDetailSerializer(serializers.ModelSerializer):
     item_name = serializers.CharField(source='item.item_name', read_only=True)
     
     class Meta:
-        model = Issuedetail
+        model = IssueDetail
         fields = [
             'issue_detail_id', 'item', 'item_name',
             'quantity', 'unit_price', 'line_total'
@@ -160,7 +160,7 @@ class IssueDetailSerializer(serializers.ModelSerializer):
 
 class IssueDetailCreateSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Issuedetail
+        model = IssueDetail
         fields = ['item', 'quantity']
         
     def validate_quantity(self, value):
@@ -287,7 +287,7 @@ class IssueCreateSerializer(serializers.ModelSerializer):
             unit_price = item.price
             line_total = quantity * unit_price
             
-            Issuedetail.objects.create(
+            IssueDetail.objects.create(
                 issue=issue,
                 item=item,
                 quantity=quantity,

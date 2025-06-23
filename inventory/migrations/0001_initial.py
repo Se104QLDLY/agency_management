@@ -153,7 +153,7 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.CreateModel(
-            name="Issuedetail",
+            name="IssueDetail",
             fields=[
                 (
                     "issue_detail_id",
@@ -220,7 +220,7 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.CreateModel(
-            name="Receiptdetail",
+            name="ReceiptDetail",
             fields=[
                 (
                     "receipt_detail_id",

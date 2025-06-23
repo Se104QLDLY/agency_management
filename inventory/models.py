@@ -33,7 +33,6 @@ class Item(models.Model):
     )
     stock_quantity = models.PositiveIntegerField(db_column="stock_quantity")
     description = models.TextField(null=True, blank=True, db_column="description")
-    updated_at = models.DateTimeField(null=True, blank=True, db_column="updated_at")
 
     objects = ItemQuerySet.as_manager()
 
@@ -70,7 +69,7 @@ class Receipt(models.Model):
         return f"Receipt #{self.receipt_id}"
 
 
-class Receiptdetail(models.Model):
+class ReceiptDetail(models.Model):
     receipt_detail_id = models.AutoField(primary_key=True, db_column="receipt_detail_id")
     receipt = models.ForeignKey(Receipt, on_delete=models.CASCADE, db_column="receipt_id", related_name="details")
     item = models.ForeignKey(Item, on_delete=models.RESTRICT, db_column="item_id", related_name="receipt_details")
@@ -113,7 +112,7 @@ class Issue(models.Model):
         return f"Issue #{self.issue_id}"
 
 
-class Issuedetail(models.Model):
+class IssueDetail(models.Model):
     issue_detail_id = models.AutoField(primary_key=True, db_column="issue_detail_id")
     issue = models.ForeignKey(Issue, on_delete=models.CASCADE, db_column="issue_id", related_name="details")
     item = models.ForeignKey(Item, on_delete=models.RESTRICT, db_column="item_id", related_name="issue_details")

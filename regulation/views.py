@@ -8,6 +8,7 @@ from .serializers import (
     RegulationListSerializer, RegulationDetailSerializer, 
     RegulationUpdateSerializer, RegulationHistorySerializer
 )
+from authentication.permissions import CookieJWTAuthentication, ConfigPermission
 
 
 class RegulationViewSet(viewsets.ViewSet):
@@ -18,7 +19,8 @@ class RegulationViewSet(viewsets.ViewSet):
     PUT /api/v1/regulation/{key}/ - Update regulation value
     GET /api/v1/regulation/history/ - Get regulation change history
     """
-    permission_classes = []  # Temporarily disable for testing
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [ConfigPermission]
     
     def list(self, request):
         """List all regulations"""

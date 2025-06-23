@@ -3,9 +3,9 @@ from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from .models import Item, Issuedetail, Receiptdetail, Receipt, Issue
+from .models import Item, IssueDetail, ReceiptDetail, Receipt, Issue
 
-@receiver(post_save, sender=Issuedetail)
+@receiver(post_save, sender=IssueDetail)
 def decrease_stock_on_issue(sender, instance, created, **kwargs):
     if created:
         with transaction.atomic():
@@ -15,7 +15,7 @@ def decrease_stock_on_issue(sender, instance, created, **kwargs):
             item.stock_quantity -= instance.quantity
             item.save(update_fields=["stock_quantity"])
 
-@receiver(post_save, sender=Receiptdetail)
+@receiver(post_save, sender=ReceiptDetail)
 def increase_stock_on_receipt(sender, instance, created, **kwargs):
     if created:
         with transaction.atomic():
@@ -35,10 +35,10 @@ def update_issue_total(issue_id):
     issue.total_amount = total
     issue.save(update_fields=["total_amount"])
 
-@receiver([post_save, post_delete], sender=Receiptdetail)
+@receiver([post_save, post_delete], sender=ReceiptDetail)
 def recalc_receipt_total(sender, instance, **kwargs):
     update_receipt_total(instance.receipt_id)
 
-@receiver([post_save, post_delete], sender=Issuedetail)
+@receiver([post_save, post_delete], sender=IssueDetail)
 def recalc_issue_total(sender, instance, **kwargs):
     update_issue_total(instance.issue_id)
