@@ -77,7 +77,7 @@ class Agency(models.Model):
         return self.agency_name
 
 class StaffAgency(models.Model):
-    staff_id = models.IntegerField(db_column="staff_id")
+    staff_id = models.IntegerField(db_column="staff_id", primary_key=True)
     agency = models.ForeignKey(
         Agency,
         on_delete=models.CASCADE,

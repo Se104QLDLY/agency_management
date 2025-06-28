@@ -90,8 +90,8 @@ class APITester:
         # Test user listing
         self.test_endpoint('GET', '/users/', 'List all users')
         
-        # Test current user (will fail without proper auth)
-        self.test_endpoint('GET', '/auth/me/', 'Get current user profile', expected_status=401)
+        # Test current user (should succeed after login)
+        self.test_endpoint('GET', '/auth/me/', 'Get current user profile', expected_status=200)
 
     def run_agency_tests(self):
         """Test Agency Management APIs"""
