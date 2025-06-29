@@ -111,8 +111,8 @@ class APITester:
         self.test_endpoint('GET', '/agency/?agency_type=1', 'Filter agencies by type')
         
         # Test agency details
-        self.test_endpoint('GET', '/agency/8/', 'Get agency details')
-        self.test_endpoint('GET', '/agency/8/debt/', 'Get agency debt info')
+        self.test_endpoint('GET', '/agency/1/', 'Get agency details')
+        self.test_endpoint('GET', '/agency/1/debt/', 'Get agency debt info')
         
         # Staff-Agency relationships
         self.test_endpoint('GET', '/staff-agency/', 'List staff-agency relationships')
@@ -136,11 +136,11 @@ class APITester:
         
         # Receipts (Stock-in)
         self.test_endpoint('GET', '/inventory/receipts/', 'List all receipts')
-        self.test_endpoint('GET', '/inventory/receipts/?agency_id=8', 'Filter receipts by agency')
+        self.test_endpoint('GET', '/inventory/receipts/?agency_id=1', 'Filter receipts by agency')
         
         # Issues (Stock-out)
         self.test_endpoint('GET', '/inventory/issues/', 'List all issues')
-        self.test_endpoint('GET', '/inventory/issues/?agency_id=8', 'Filter issues by agency')
+        self.test_endpoint('GET', '/inventory/issues/?agency_id=1', 'Filter issues by agency')
 
     def run_finance_tests(self):
         """Test Finance Management APIs"""
@@ -150,7 +150,7 @@ class APITester:
         
         # Payments
         self.test_endpoint('GET', '/finance/payments/', 'List all payments')
-        self.test_endpoint('GET', '/finance/payments/?agency_id=8', 'Filter payments by agency')
+        self.test_endpoint('GET', '/finance/payments/?agency_id=1', 'Filter payments by agency')
         
         # Reports
         self.test_endpoint('GET', '/finance/reports/', 'List all reports')

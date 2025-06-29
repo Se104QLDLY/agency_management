@@ -15,7 +15,7 @@ class Unit(models.Model):
     unit_name = models.CharField(max_length=50, unique=True, db_column="unit_name")
 
     class Meta:
-        db_table = 'inventory"."unit'
+        db_table = '"inventory"."unit"'
         ordering = ["unit_name"]
         managed = False
 
@@ -33,11 +33,13 @@ class Item(models.Model):
     )
     stock_quantity = models.PositiveIntegerField(db_column="stock_quantity")
     description = models.TextField(null=True, blank=True, db_column="description")
+    created_at = models.DateTimeField(null=True, blank=True, db_column="created_at")
+    updated_at = models.DateTimeField(null=True, blank=True, db_column="updated_at")
 
     objects = ItemQuerySet.as_manager()
 
     class Meta:
-        db_table = 'inventory"."item'
+        db_table = '"inventory"."item"'
         ordering = ["item_name"]
         indexes = [
             models.Index(fields=["unit"]),
@@ -57,7 +59,7 @@ class Receipt(models.Model):
     created_at = models.DateTimeField(null=True, blank=True, db_column="created_at")
 
     class Meta:
-        db_table = 'inventory"."receipt'
+        db_table = '"inventory"."receipt"'
         ordering = ["-receipt_date"]
         indexes = [
             models.Index(fields=["user_id"]),
@@ -78,7 +80,7 @@ class ReceiptDetail(models.Model):
     line_total = models.DecimalField(max_digits=18, decimal_places=2, db_column="line_total", validators=[MinValueValidator(0.01)])
 
     class Meta:
-        db_table = 'inventory"."receiptdetail'
+        db_table = '"inventory"."receiptdetail"'
         unique_together = ("receipt", "item")
         ordering = ["receipt", "item"]
         indexes = [
@@ -100,7 +102,7 @@ class Issue(models.Model):
     created_at = models.DateTimeField(null=True, blank=True, db_column="created_at")
 
     class Meta:
-        db_table = 'inventory"."issue'
+        db_table = '"inventory"."issue"'
         ordering = ["-issue_date"]
         indexes = [
             models.Index(fields=["agency_id"]),
@@ -121,7 +123,7 @@ class IssueDetail(models.Model):
     line_total = models.DecimalField(max_digits=18, decimal_places=2, db_column="line_total", validators=[MinValueValidator(0.01)])
 
     class Meta:
-        db_table = 'inventory"."issuedetail'
+        db_table = '"inventory"."issuedetail"'
         unique_together = ("issue", "item")
         ordering = ["issue", "item"]
         indexes = [

@@ -53,7 +53,7 @@ class Account(models.Model):
     objects = AccountManager()
 
     class Meta:
-        db_table = 'auth"."account'
+        db_table = '"auth"."account"'
         ordering = ["username"]
         indexes = [
             models.Index(fields=["account_role"]),
@@ -77,7 +77,7 @@ class User(models.Model):
     objects = models.Manager()
 
     class Meta:
-        db_table = 'auth"."user'
+        db_table = '"auth"."user"'
         ordering = ["full_name"]
         indexes = [
             models.Index(fields=["account"]),

@@ -20,7 +20,7 @@ class Payment(models.Model):
     created_at = models.DateTimeField(null=True, blank=True, db_column="created_at")
 
     class Meta:
-        db_table = 'finance"."payment'
+        db_table = '"finance"."payment"'
         ordering = ["-payment_date"]
         indexes = [
             models.Index(fields=["agency_id"]),
@@ -59,7 +59,7 @@ class Report(models.Model):
     objects = ReportManager()
 
     class Meta:
-        db_table = 'finance"."report'
+        db_table = '"finance"."report"'
         ordering = ["-report_date"]
         indexes = [
             models.Index(fields=["report_type"]),
@@ -78,7 +78,7 @@ class DebtSummary(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'finance"."v_debt_summary'
+        db_table = '"finance"."v_debt_summary"'
 
 
 class SalesMonthly(models.Model):
@@ -87,5 +87,5 @@ class SalesMonthly(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'finance"."v_sales_monthly'
+        db_table = '"finance"."v_sales_monthly"'
 

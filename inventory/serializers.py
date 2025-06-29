@@ -17,7 +17,7 @@ class ItemListSerializer(serializers.ModelSerializer):
         model = Item
         fields = [
             'item_id', 'item_name', 'unit', 'unit_name', 
-            'price', 'stock_quantity', 'description'
+            'price', 'stock_quantity', 'description', 'created_at', 'updated_at'
         ]
 
 
@@ -28,7 +28,7 @@ class ItemDetailSerializer(serializers.ModelSerializer):
         model = Item
         fields = [
             'item_id', 'item_name', 'unit', 'unit_name',
-            'price', 'stock_quantity', 'description'
+            'price', 'stock_quantity', 'description', 'created_at', 'updated_at'
         ]
 
 
