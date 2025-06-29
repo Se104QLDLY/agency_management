@@ -57,7 +57,7 @@ class CustomLoginView(APIView):
                     max_age=60 * 60 * 24,  # 1 day
                     httponly=True,
                     secure=False,  # Set to True in production with HTTPS
-                    samesite='Lax'
+                    samesite='None'
                 )
                 response.set_cookie(
                     'refresh',
@@ -65,7 +65,7 @@ class CustomLoginView(APIView):
                     max_age=60 * 60 * 24 * 7,  # 7 days
                     httponly=True,
                     secure=False,  # Set to True in production with HTTPS
-                    samesite='Lax'
+                    samesite='None'
                 )
                 
                 return response
@@ -95,7 +95,7 @@ class CustomTokenRefreshView(APIView):
                 max_age=60 * 60 * 24,  # 1 day
                 httponly=True,
                 secure=False,  # Set to True in production with HTTPS
-                samesite='Lax'
+                samesite='None'
             )
             return response
         except TokenError as e:
@@ -194,7 +194,7 @@ class UserRegistrationView(generics.CreateAPIView):
                     max_age=60 * 60 * 24,  # 1 day
                     httponly=True,
                     secure=False,  # Set to True in production with HTTPS
-                    samesite='Lax'
+                    samesite='None'
                 )
                 response.set_cookie(
                     'refresh',
@@ -202,7 +202,7 @@ class UserRegistrationView(generics.CreateAPIView):
                     max_age=60 * 60 * 24 * 7,  # 7 days
                     httponly=True,
                     secure=False,  # Set to True in production with HTTPS
-                    samesite='Lax'
+                    samesite='None'
                 )
                 
                 return response

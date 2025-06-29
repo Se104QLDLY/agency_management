@@ -177,7 +177,7 @@ class IssueListSerializer(serializers.ModelSerializer):
         model = Issue
         fields = [
             'issue_id', 'issue_date', 'agency_id', 'agency_name',
-            'user_id', 'user_name', 'total_amount', 'created_at'
+            'user_id', 'user_name', 'total_amount', 'status', 'status_reason', 'created_at'
         ]
         
     def get_agency_name(self, obj):
@@ -203,7 +203,7 @@ class IssueDetailNestedSerializer(serializers.ModelSerializer):
         model = Issue
         fields = [
             'issue_id', 'issue_date', 'agency_id', 'user_id',
-            'total_amount', 'created_at', 'details', 'debt_impact'
+            'total_amount', 'status', 'status_reason', 'created_at', 'details', 'debt_impact'
         ]
         
     def get_debt_impact(self, obj):

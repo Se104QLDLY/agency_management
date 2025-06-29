@@ -97,7 +97,7 @@ class BaseScopePermission(permissions.BasePermission):
                 'report:read', 'profile:read', 'profile:write'
             ],
             'agent': [
-                'agency:read', 'inventory:read',
+                'agency:read', 'inventory:read', 'inventory:write',
                 'profile:read', 'profile:write'
             ]
         }

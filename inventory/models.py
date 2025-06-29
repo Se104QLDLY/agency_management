@@ -94,11 +94,31 @@ class ReceiptDetail(models.Model):
 
 
 class Issue(models.Model):
+    STATUS_CHOICES = [
+        ('processing', 'Đang xử lý'),
+        ('confirmed', 'Đã xác nhận'),
+        ('postponed', 'Tạm hoãn'),
+        ('cancelled', 'Đã hủy'),
+    ]
+    
     issue_id = models.AutoField(primary_key=True, db_column="issue_id")
     issue_date = models.DateField(db_column="issue_date")
     agency_id = models.IntegerField(db_column="agency_id")
     user_id = models.IntegerField(db_column="user_id")
     total_amount = models.DecimalField(max_digits=18, decimal_places=2, db_column="total_amount")
+    status = models.CharField(
+        max_length=20, 
+        choices=STATUS_CHOICES, 
+        default='processing',
+        db_column="status",
+        help_text="Trạng thái đơn hàng"
+    )
+    status_reason = models.TextField(
+        null=True, 
+        blank=True, 
+        db_column="status_reason",
+        help_text="Lý do trạng thái"
+    )
     created_at = models.DateTimeField(null=True, blank=True, db_column="created_at")
 
     class Meta:

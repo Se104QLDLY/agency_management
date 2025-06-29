@@ -205,3 +205,29 @@ class IssueViewSet(viewsets.ModelViewSet):
         issues = self.get_queryset().filter(agency_id=agency_id)
         serializer = self.get_serializer(issues, many=True)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['patch'])
+    def update_status(self, request, pk=None):
+        """Update issue status"""
+        issue = self.get_object()
+        new_status = request.data.get('status')
+        status_reason = request.data.get('status_reason', '')
+        
+        if not new_status:
+            return Response(
+                {'error': 'status field is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if new_status not in dict(Issue.STATUS_CHOICES):
+            return Response(
+                {'error': f'Invalid status. Must be one of: {[choice[0] for choice in Issue.STATUS_CHOICES]}'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        issue.status = new_status
+        issue.status_reason = status_reason
+        issue.save()
+        
+        serializer = self.get_serializer(issue)
+        return Response(serializer.data)

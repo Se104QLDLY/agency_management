@@ -212,3 +212,14 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
+
+# Allow cookies for cross-site requests
+SESSION_COOKIE_SECURE = False  # Set True in production
+CSRF_COOKIE_SECURE = False     # Set True in production
+SESSION_COOKIE_SAMESITE = None
+CSRF_COOKIE_SAMESITE = None
+# Trust front-end origins for CSRF
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+]

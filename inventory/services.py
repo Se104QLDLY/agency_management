@@ -4,6 +4,7 @@ from decimal import Decimal
 from authentication.exceptions import DebtLimitExceeded, OutOfStock
 from agency.models import Agency
 from .models import Item, Receipt, ReceiptDetail, Issue, IssueDetail
+from django.db.models import Max
 
 
 class InventoryService:
@@ -67,7 +68,14 @@ class InventoryService:
         Per docs/flow.md: Validate debt limit → Check stock → Issue → Update debt
         """
         agency_id = issue_data['agency_id']
+        # Determine next primary key manually to avoid duplicate key errors without changing DDL
+        current_max = Issue.objects.aggregate(max_id=Max('issue_id'))['max_id'] or 0
+        next_id = current_max + 1
         items_data = issue_data.pop('items', [])
+        
+        # Determine next detail primary key to avoid duplicate IssueDetail PK errors
+        current_max_detail = IssueDetail.objects.aggregate(max_id=Max('issue_detail_id'))['max_id'] or 0
+        next_detail_id = current_max_detail + 1
         
         # Get agency with debt info
         try:
@@ -80,12 +88,14 @@ class InventoryService:
         item_validations = []
         
         for item_data in items_data:
+            # Support both 'item_id' and 'item' keys
+            item_id = item_data.get('item_id', item_data.get('item'))
             try:
-                item = Item.objects.get(item_id=item_data['item_id'])
+                item = Item.objects.get(item_id=item_id)
             except Item.DoesNotExist:
-                raise ValueError(f"Item {item_data['item_id']} not found")
+                raise ValueError(f"Item {item_id} not found")
             
-            quantity = item_data['quantity']
+            quantity = item_data.get('quantity')
             unit_price = item_data.get('unit_price', item.price)
             line_total = Decimal(quantity) * Decimal(unit_price)
             
@@ -118,26 +128,33 @@ class InventoryService:
                 additional_amount=total_amount
             )
         
-        # All validations passed - create issue
-        issue = Issue.objects.create(
+        # All validations passed - create issue with manual primary key
+        issue_date = issue_data.get('issue_date', timezone.now().date())
+        issue = Issue(
+            issue_id=next_id,
             agency_id=agency_id,
             user_id=user.user_id,
-            issue_date=issue_data.get('issue_date', timezone.now().date()),
+            issue_date=issue_date,
             total_amount=total_amount
         )
+        # force_insert to respect manual PK
+        issue.save(force_insert=True)
         
         # Create issue details and update stock
         for validation in item_validations:
             item = validation['item']
             
-            # Create issue detail
-            IssueDetail.objects.create(
+            # Create issue detail with manual primary key
+            detail = IssueDetail(
+                issue_detail_id=next_detail_id,
                 issue=issue,
                 item=item,
                 quantity=validation['quantity'],
                 unit_price=validation['unit_price'],
                 line_total=validation['line_total']
             )
+            detail.save(force_insert=True)
+            next_detail_id += 1
             
             # Update stock quantity (reduce)
             item.stock_quantity -= validation['quantity']

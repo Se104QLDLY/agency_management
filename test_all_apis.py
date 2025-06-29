@@ -80,12 +80,12 @@ class APITester:
         print("🔐 AUTHENTICATION & USER MANAGEMENT TESTS")
         print("="*60)
         
-        # Test login
+        # Use agent credentials for testing
         login_data = {
-            "username": "admin",
-            "password": "admin123"
+            "username": "agent1",
+            "password": "agent123"
         }
-        response = self.test_endpoint('POST', '/auth/login/', 'Admin login', login_data)
+        response = self.test_endpoint('POST', '/auth/login/', 'Agent login', login_data)
         
         # Test user listing
         self.test_endpoint('GET', '/users/', 'List all users')
