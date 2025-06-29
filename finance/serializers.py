@@ -162,7 +162,12 @@ class ReportCreateSerializer(serializers.ModelSerializer):
         fields = ['report_type', 'report_date', 'data']
         
     def create(self, validated_data):
-        user = self.context['request'].user
+        # request.user is an Account object. We need the related User's ID.
+        # The User model has a ForeignKey to Account with related_name="users".
+        account = self.context['request'].user
+        user = account.users.first()  # Get the first user associated with this account
+        if not user:
+            raise serializers.ValidationError("No user profile found for this account")
         
         report = Report.objects.create(
             **validated_data,

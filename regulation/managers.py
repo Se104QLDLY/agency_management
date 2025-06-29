@@ -13,7 +13,7 @@ class RegulationManager(models.Manager):
             regulation_key=key,
             defaults={
                 'regulation_value': value,
-                'last_updated_by': user.id if user else None,
+                'last_updated_by': user.user_id if user else None,
                 'updated_at': None,  # Will be set by signal
             }
         )

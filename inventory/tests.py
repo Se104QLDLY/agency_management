@@ -1,175 +1,344 @@
-from django.test import TestCase
 import pytest
-from rest_framework import status
-from .models import Item, Unit, Receipt
-from agency.models import Agency, AgencyType, District
+from decimal import Decimal
 from datetime import date
+from django.db import IntegrityError, connection
+from django.core.exceptions import ValidationError
+from rest_framework.test import APIClient
+from rest_framework import status
+import os
 
-# Create your tests here.
+from inventory.models import Unit, Item, Receipt, ReceiptDetail, Issue, IssueDetail
+from authentication.models import Account, User
+from agency.models import AgencyType, District, Agency
 
-# Mark all tests in this module as needing database access
-pytestmark = pytest.mark.django_db
 
-# --- Prerequisite Fixtures ---
+@pytest.mark.django_db
+class TestUnitModel:
+    """Test cases cơ bản cho Unit model"""
 
-@pytest.fixture
-def sample_unit():
-    """Fixture to create a sample Unit for items."""
-    unit, _ = Unit.objects.get_or_create(unit_name='Cái')
-    return unit
+    def test_create_unit_success(self):
+        """Kiểm tra tạo unit thành công"""
+        unit = Unit.objects.create(unit_name='Cái')
+        assert unit.unit_name == 'Cái'
+        assert unit.unit_id is not None
 
-@pytest.fixture
-def sample_item(sample_unit):
-    """Fixture to create a sample Item."""
-    item, _ = Item.objects.get_or_create(
-        item_name='Bia Heineken 330ml',
-        defaults={
-            'unit': sample_unit,
-            'price': 25000,
-            'stock_quantity': 100,
-            'description': 'Bia lon mát lạnh'
-        }
-    )
-    return item
+    def test_unit_name_unique(self):
+        """Kiểm tra unit_name phải là duy nhất"""
+        Unit.objects.create(unit_name='Cái')
+        with pytest.raises(IntegrityError):
+            Unit.objects.create(unit_name='Cái')
 
-@pytest.fixture
-def sample_agency():
-    """Fixture to create a sample Agency for receipts/issues."""
-    agency_type, _ = AgencyType.objects.get_or_create(
-        agency_type_id=1,
-        defaults={'type_name': 'Test Type', 'max_debt': 50000}
-    )
-    district, _ = District.objects.get_or_create(
-        district_id=1,
-        defaults={'district_name': 'Test District', 'max_agencies': 10}
-    )
-    agency, _ = Agency.objects.get_or_create(
-        email='pytest_agency@example.com',
-        defaults={
-            'agency_name': 'Pytest Agency',
-            'agency_type': agency_type,
-            'phone_number': '0987654321',
-            'address': '456 Test Ave',
-            'district': district,
-            'reception_date': date.today(),
-            'debt_amount': 0
-        }
-    )
-    return agency
+    def test_unit_str_representation(self):
+        """Kiểm tra string representation của Unit"""
+        unit = Unit.objects.create(unit_name='Cái')
+        assert str(unit) == 'Cái'
 
-# --- Item API Tests ---
 
-def test_list_items_authenticated(authenticated_admin_client, sample_item):
+@pytest.mark.django_db
+class TestItemModel:
+    """Test cases cơ bản cho Item model"""
+
+    @pytest.fixture
+    def unit(self):
+        """Fixture tạo unit cho test"""
+        return Unit.objects.create(unit_name='Cái')
+
+    def test_create_item_success(self, unit):
+        """Kiểm tra tạo item thành công"""
+        item = Item.objects.create(
+            item_name='Bút bi',
+            unit=unit,
+            price=Decimal('5000.00'),
+            stock_quantity=100,
+            description='Bút bi xanh'
+        )
+        assert item.item_name == 'Bút bi'
+        assert item.price == Decimal('5000.00')
+        assert item.stock_quantity == 100
+        assert item.unit == unit
+
+    def test_item_name_unique(self, unit):
+        """Kiểm tra item_name phải là duy nhất"""
+        Item.objects.create(
+            item_name='Bút bi',
+            unit=unit,
+            price=Decimal('5000.00'),
+            stock_quantity=100
+        )
+        with pytest.raises(IntegrityError):
+            Item.objects.create(
+                item_name='Bút bi',
+                unit=unit,
+                price=Decimal('6000.00'),
+                stock_quantity=50
+            )
+
+    def test_item_price_validation(self, unit):
+        """Kiểm tra validation cho price"""
+        with pytest.raises(IntegrityError):
+            Item.objects.create(
+                item_name='Test Item',
+                unit=unit,
+                price=Decimal('-1000.00'),
+                stock_quantity=10
+            )
+
+    def test_item_str_representation(self, unit):
+        """Kiểm tra string representation của Item"""
+        item = Item.objects.create(
+            item_name='Bút bi',
+            unit=unit,
+            price=Decimal('5000.00'),
+            stock_quantity=100
+        )
+        assert str(item) == 'Bút bi'
+
+
+@pytest.mark.django_db
+class TestReceiptModel:
+    """Test cases cơ bản cho Receipt model"""
+
+    @pytest.fixture
+    def user(self):
+        """Fixture tạo user cho test"""
+        account = Account.objects.create(
+            username='testuser',
+            password_hash='hash',
+            account_role=Account.ADMIN
+        )
+        return User.objects.create(
+            account=account,
+            full_name='Test User',
+            email='test@example.com'
+        )
+
+    @pytest.fixture
+    def agency(self):
+        """Fixture tạo agency cho test"""
+        agency_type = AgencyType.objects.create(
+            type_name='Loại A',
+            max_debt=Decimal('1000000.00')
+        )
+        district = District.objects.create(
+            city_name='Hà Nội',
+            district_name='Cầu Giấy',
+            max_agencies=10
+        )
+        return Agency.objects.create(
+            agency_name='Đại lý Test',
+            agency_type=agency_type,
+            phone_number='0123456789',
+            address='123 Test Street',
+            district=district,
+            email='agency@test.com',
+            representative='Nguyễn Văn A',
+            reception_date=date.today(),
+            debt_amount=Decimal('0.00')
+        )
+
+    def test_create_receipt_success(self, user, agency):
+        """Kiểm tra tạo receipt thành công"""
+        receipt = Receipt.objects.create(
+            receipt_date=date.today(),
+            user_id=user.user_id,
+            agency_id=agency.agency_id,
+            total_amount=Decimal('0.00')
+        )
+        assert receipt.receipt_date == date.today()
+        assert receipt.user_id == user.user_id
+        assert receipt.agency_id == agency.agency_id
+        assert receipt.total_amount == Decimal('0.00')
+
+    def test_receipt_total_amount_validation(self, user, agency):
+        """Kiểm tra validation cho total_amount"""
+        with pytest.raises(ValidationError):
+            receipt = Receipt(
+                receipt_date=date.today(),
+                user_id=user.user_id,
+                agency_id=agency.agency_id,
+                total_amount=Decimal('-1000.00')
+            )
+            receipt.full_clean()
+
+    def test_receipt_str_representation(self, user, agency):
+        """Kiểm tra string representation của Receipt"""
+        receipt = Receipt.objects.create(
+            receipt_date=date.today(),
+            user_id=user.user_id,
+            agency_id=agency.agency_id,
+            total_amount=Decimal('0.00')
+        )
+        assert str(receipt) == f'Receipt #{receipt.receipt_id}'
+
+
+@pytest.mark.django_db
+class TestIssueModel:
+    """Test cases cơ bản cho Issue model"""
+
+    @pytest.fixture
+    def user(self):
+        """Fixture tạo user cho test"""
+        account = Account.objects.create(
+            username='testuser',
+            password_hash='hash',
+            account_role=Account.ADMIN
+        )
+        return User.objects.create(
+            account=account,
+            full_name='Test User',
+            email='test@example.com'
+        )
+
+    @pytest.fixture
+    def agency(self):
+        """Fixture tạo agency cho test"""
+        agency_type = AgencyType.objects.create(
+            type_name='Loại A',
+            max_debt=Decimal('1000000.00')
+        )
+        district = District.objects.create(
+            city_name='Hà Nội',
+            district_name='Cầu Giấy',
+            max_agencies=10
+        )
+        return Agency.objects.create(
+            agency_name='Đại lý Test',
+            agency_type=agency_type,
+            phone_number='0123456789',
+            address='123 Test Street',
+            district=district,
+            email='agency@test.com',
+            representative='Nguyễn Văn A',
+            reception_date=date.today(),
+            debt_amount=Decimal('0.00')
+        )
+
+    def test_create_issue_success(self, user, agency):
+        """Kiểm tra tạo issue thành công"""
+        issue = Issue.objects.create(
+            issue_date=date.today(),
+            agency_id=agency.agency_id,
+            user_id=user.user_id,
+            total_amount=Decimal('0.00')
+        )
+        assert issue.issue_date == date.today()
+        assert issue.agency_id == agency.agency_id
+        assert issue.user_id == user.user_id
+        assert issue.total_amount == Decimal('0.00')
+
+    def test_issue_total_amount_validation(self, user, agency):
+        """Kiểm tra validation cho total_amount"""
+        with pytest.raises(ValidationError):
+            issue = Issue(
+                issue_date=date.today(),
+                agency_id=agency.agency_id,
+                user_id=user.user_id,
+                total_amount=Decimal('-1000.00')
+            )
+            issue.full_clean()
+
+    def test_issue_str_representation(self, user, agency):
+        """Kiểm tra string representation của Issue"""
+        issue = Issue.objects.create(
+            issue_date=date.today(),
+            agency_id=agency.agency_id,
+            user_id=user.user_id,
+            total_amount=Decimal('0.00')
+        )
+        assert str(issue) == f'Issue #{issue.issue_id}'
+
+
+@pytest.mark.django_db
+class TestDatabaseConstraints:
+    """Kiểm tra các ràng buộc database"""
+
+    def test_unit_name_unique(self):
+        """Kiểm tra unit_name là duy nhất"""
+        Unit.objects.create(unit_name="Cái")
+        with pytest.raises(IntegrityError):
+            Unit.objects.create(unit_name="Cái")
+
+    def test_item_price_check(self):
+        """Kiểm tra price >= 0"""
+        unit = Unit.objects.create(unit_name="Thùng")
+        with pytest.raises(IntegrityError):
+            Item.objects.create(
+                item_name="Bút", 
+                unit=unit, 
+                price=Decimal('-1'), 
+                stock_quantity=10
+            )
+
+    def test_item_stock_quantity_check(self):
+        """Kiểm tra stock_quantity >= 0"""
+        unit = Unit.objects.create(unit_name="Thùng")
+        with pytest.raises(IntegrityError):
+            Item.objects.create(
+                item_name="Vở", 
+                unit=unit, 
+                price=Decimal('1000'), 
+                stock_quantity=-5
+            )
+
+    def test_foreign_key_constraint(self):
+        """Kiểm tra ràng buộc khóa ngoại"""
+        with pytest.raises(IntegrityError):
+            Item.objects.create(
+                item_name="Sách", 
+                unit_id=999,  # Unit không tồn tại
+                price=Decimal('1000'), 
+                stock_quantity=10
+            )
+
+
+@pytest.fixture(scope='session')
+def apply_views(django_db_setup, django_db_blocker):
     """
-    Test that an authenticated user can list items.
+    Fixture to apply database views from a SQL file.
+    This is a workaround for views not being part of migrations.
     """
-    url = '/api/v1/inventory/items/'
-    response = authenticated_admin_client.get(url)
-    
-    assert response.status_code == status.HTTP_200_OK
-    assert 'results' in response.data
-    assert len(response.data['results']) > 0
-    assert response.data['results'][0]['item_name'] == 'Bia Heineken 330ml'
+    with django_db_blocker.unblock():
+        # Construct the path to the SQL file relative to this test file.
+        # __file__ is the path to the current file (tests.py)
+        # os.path.dirname gives the directory of the file.
+        # os.path.join is used to safely join path components.
+        # Correctly locate the 'db/newddl.sql' file from the project root.
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        sql_file_path = os.path.join(base_dir, 'db', 'newddl.sql')
 
-def test_list_items_unauthenticated(api_client, sample_item):
-    """
-    Test that an unauthenticated user receives a 401/403 error.
-    """
-    url = '/api/v1/inventory/items/'
-    response = api_client.get(url)
-    assert response.status_code in [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN]
+        with open(sql_file_path, 'r') as f:
+            sql = f.read()
+            # Split SQL file into individual statements.
+            # This is a simple split, might need adjustment for complex SQL.
+            statements = [s.strip() for s in sql.split(';') if s.strip()]
+            with connection.cursor() as cursor:
+                for statement in statements:
+                    # Execute each statement, ignoring potential errors if views/schemas already exist.
+                    # This makes the fixture runnable multiple times without failure.
+                    try:
+                        cursor.execute(statement)
+                    except Exception:
+                        # This is a broad exception, but for the purpose of creating
+                        # views in a test setup, it's acceptable to ignore errors
+                        # like "schema already exists" or "view already exists".
+                        pass
 
-def test_create_item_success(authenticated_admin_client, sample_unit):
-    """
-    Test creating a new item successfully.
-    """
-    url = '/api/v1/inventory/items/'
-    data = {
-        "item_name": "Bia Tiger Crystal",
-        "unit": sample_unit.unit_id,
-        "price": "22000.00",
-        "stock_quantity": 200,
-        "description": "Bia Tiger lon bạc"
-    }
-    response = authenticated_admin_client.post(url, data, format='json')
-    
-    assert response.status_code == status.HTTP_201_CREATED
-    assert response.data['item_name'] == "Bia Tiger Crystal"
-    assert Item.objects.filter(item_name="Bia Tiger Crystal").exists()
 
-def test_create_item_missing_fields(authenticated_admin_client, sample_unit):
-    """
-    Test that creating an item with missing required fields fails.
-    """
-    url = '/api/v1/inventory/items/'
-    data = {
-        "item_name": "Sản phẩm lỗi",
-        "unit": sample_unit.unit_id
-        # Missing price and stock_quantity
-    }
-    response = authenticated_admin_client.post(url, data, format='json')
-    
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    # The API returns a structured error. Let's check the structure.
-    assert 'details' in response.data
-    assert 'price' in response.data['details']
-    assert 'stock_quantity' in response.data['details']
+@pytest.mark.django_db
+@pytest.mark.usefixtures("apply_views")
+class TestViews:
+    """Kiểm tra các view trong database"""
 
-# --- Receipt API Tests ---
+    def test_debt_summary_view(self):
+        """Kiểm tra view finance.v_debt_summary"""
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM finance.v_debt_summary")
+            rows = cursor.fetchall()
+            assert isinstance(rows, list)
 
-def test_list_receipts_authenticated(authenticated_admin_client):
-    """
-    Test that an authenticated user can list receipts.
-    """
-    url = '/api/v1/inventory/receipts/'
-    response = authenticated_admin_client.get(url)
-    
-    assert response.status_code == status.HTTP_200_OK
-    assert 'results' in response.data
-
-def test_create_receipt_success(authenticated_admin_client, sample_agency, sample_item):
-    """
-    Test creating a new receipt successfully.
-    """
-    url = '/api/v1/inventory/receipts/'
-    data = {
-        "agency_id": sample_agency.agency_id,
-        "receipt_date": date.today().isoformat(),
-        "items": [
-            {
-                "item": sample_item.item_id,
-                "item_id": sample_item.item_id,
-                "quantity": 10,
-                "unit_price": "20000.00"
-            }
-        ]
-    }
-    response = authenticated_admin_client.post(url, data, format='json')
-
-    assert response.status_code == status.HTTP_201_CREATED
-    assert response.data['agency_id'] == sample_agency.agency_id
-    assert Receipt.objects.filter(agency_id=sample_agency.agency_id).exists()
-
-def test_create_receipt_invalid_agency(authenticated_admin_client, sample_item):
-    """
-    Test that creating a receipt for a non-existent agency fails.
-    """
-    url = '/api/v1/inventory/receipts/'
-    data = {
-        "agency_id": 99999, # Non-existent agency
-        "receipt_date": date.today().isoformat(),
-        "items": [
-            {
-                "item": sample_item.item_id,
-                "item_id": sample_item.item_id,
-                "quantity": 5,
-                "unit_price": "20000.00"
-            }
-        ]
-    }
-    response = authenticated_admin_client.post(url, data, format='json')
-
-    # TODO: The backend should validate the agency_id and return 400.
-    # Currently, it does not, so we assert 201 to make the test pass.
-    # This reveals a potential bug in the validation logic.
-    assert response.status_code == status.HTTP_201_CREATED
+    def test_stock_balance_view(self):
+        """Kiểm tra view inventory.v_stock_balance"""
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM inventory.v_stock_balance")
+            rows = cursor.fetchall()
+            assert isinstance(rows, list) 

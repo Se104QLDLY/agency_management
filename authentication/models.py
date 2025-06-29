@@ -47,7 +47,7 @@ class Account(models.Model):
     username = models.CharField(max_length=50, unique=True, db_column="username")
     password_hash = models.CharField(max_length=255, db_column="password_hash")
     account_role = models.CharField(max_length=20, choices=ACCOUNT_ROLE_CHOICES, db_column="account_role")
-    created_at = models.DateTimeField(null=True, blank=True, db_column="created_at")
+    created_at = models.DateTimeField(null=True, blank=True, db_column="created_at", auto_now_add=True)
     updated_at = models.DateTimeField(null=True, blank=True, db_column="updated_at", auto_now=True)
 
     objects = AccountManager()
@@ -57,6 +57,12 @@ class Account(models.Model):
         ordering = ["username"]
         indexes = [
             models.Index(fields=["account_role"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(account_role__in=['admin', 'staff', 'agent']),
+                name="auth_account_role_check"
+            )
         ]
         managed = False
 
@@ -71,7 +77,7 @@ class User(models.Model):
     email = models.CharField(max_length=100, unique=True, null=True, blank=True, db_column="email")
     phone_number = models.CharField(max_length=15, null=True, blank=True, db_column="phone_number")
     address = models.CharField(max_length=255, null=True, blank=True, db_column="address")
-    created_at = models.DateTimeField(null=True, blank=True, db_column="created_at")
+    created_at = models.DateTimeField(null=True, blank=True, db_column="created_at", auto_now_add=True)
     updated_at = models.DateTimeField(null=True, blank=True, db_column="updated_at", auto_now=True)
 
     objects = models.Manager()

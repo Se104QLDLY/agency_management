@@ -16,6 +16,7 @@ from agency.models import Agency
 from inventory.models import Issue
 from authentication.permissions import CookieJWTAuthentication, FinancePermission
 from .services import FinanceService
+from authentication.models import User
 
 
 class PaymentViewSet(viewsets.ModelViewSet):
@@ -58,12 +59,25 @@ class PaymentViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         """Create payment and update agency debt using business logic service"""
         try:
-            payment, debt_info = FinanceService.create_payment(request.data, request.user)
+            # The service expects a User object, but request.user is an Account object from JWT auth.
+            # We need to fetch the related User profile to pass to the service.
+            try:
+                user_profile = User.objects.get(account=request.user)
+            except User.DoesNotExist:
+                return Response({"error": "User profile not found for the authenticated account."}, status=status.HTTP_400_BAD_REQUEST)
+
+            payment, debt_info = FinanceService.create_payment(request.data, user_profile)
             
             # Return detailed response with debt information
             detail_serializer = PaymentDetailSerializer(payment)
-            response_data = detail_serializer.data
-            response_data['debt_info'] = debt_info
+            
+            response_data = {
+                "message": "Payment created successfully",
+                "data": {
+                    "payment": detail_serializer.data,
+                    "debt_info": debt_info
+                }
+            }
             
             return Response(response_data, status=status.HTTP_201_CREATED)
         except Exception as e:
@@ -95,6 +109,14 @@ class ReportViewSet(viewsets.ModelViewSet):
             return ReportCreateSerializer
         else:
             return ReportDetailSerializer
+
+    def create(self, request, *args, **kwargs):
+        """Create a new report, injecting the user from the request context."""
+        serializer = self.get_serializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class DebtViewSet(viewsets.ViewSet):

@@ -55,7 +55,10 @@ class Receipt(models.Model):
     receipt_date = models.DateField(db_column="receipt_date")
     user_id = models.IntegerField(db_column="user_id")
     agency_id = models.IntegerField(db_column="agency_id")
-    total_amount = models.DecimalField(max_digits=18, decimal_places=2, db_column="total_amount")
+    total_amount = models.DecimalField(
+        max_digits=18, decimal_places=2, db_column="total_amount",
+        validators=[MinValueValidator(0.00)]
+    )
     created_at = models.DateTimeField(null=True, blank=True, db_column="created_at")
 
     class Meta:
@@ -105,7 +108,10 @@ class Issue(models.Model):
     issue_date = models.DateField(db_column="issue_date")
     agency_id = models.IntegerField(db_column="agency_id")
     user_id = models.IntegerField(db_column="user_id")
-    total_amount = models.DecimalField(max_digits=18, decimal_places=2, db_column="total_amount")
+    total_amount = models.DecimalField(
+        max_digits=18, decimal_places=2, db_column="total_amount",
+        validators=[MinValueValidator(0.00)]
+    )
     status = models.CharField(
         max_length=20, 
         choices=STATUS_CHOICES, 
