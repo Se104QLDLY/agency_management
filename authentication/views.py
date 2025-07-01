@@ -13,6 +13,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
+from django.conf import settings
 
 from .models import Account, User
 from .serializers import (
@@ -56,16 +57,16 @@ class CustomLoginView(APIView):
                     str(access_token),
                     max_age=60 * 60 * 24,  # 1 day
                     httponly=True,
-                    secure=False,  # Set to True in production with HTTPS
-                    samesite='None'
+                    secure=settings.AUTH_COOKIE_SECURE,
+                    samesite=settings.AUTH_COOKIE_SAMESITE
                 )
                 response.set_cookie(
                     'refresh',
                     str(refresh),
                     max_age=60 * 60 * 24 * 7,  # 7 days
                     httponly=True,
-                    secure=False,  # Set to True in production with HTTPS
-                    samesite='None'
+                    secure=settings.AUTH_COOKIE_SECURE,
+                    samesite=settings.AUTH_COOKIE_SAMESITE
                 )
                 
                 return response
@@ -94,8 +95,8 @@ class CustomTokenRefreshView(APIView):
                 str(access_token),
                 max_age=60 * 60 * 24,  # 1 day
                 httponly=True,
-                secure=False,  # Set to True in production with HTTPS
-                samesite='None'
+                secure=settings.AUTH_COOKIE_SECURE,
+                samesite=settings.AUTH_COOKIE_SAMESITE
             )
             return response
         except TokenError as e:
@@ -193,16 +194,16 @@ class UserRegistrationView(generics.CreateAPIView):
                     str(access_token),
                     max_age=60 * 60 * 24,  # 1 day
                     httponly=True,
-                    secure=False,  # Set to True in production with HTTPS
-                    samesite='None'
+                    secure=settings.AUTH_COOKIE_SECURE,
+                    samesite=settings.AUTH_COOKIE_SAMESITE
                 )
                 response.set_cookie(
                     'refresh',
                     str(refresh),
                     max_age=60 * 60 * 24 * 7,  # 7 days
                     httponly=True,
-                    secure=False,  # Set to True in production with HTTPS
-                    samesite='None'
+                    secure=settings.AUTH_COOKIE_SECURE,
+                    samesite=settings.AUTH_COOKIE_SAMESITE
                 )
                 
                 return response
