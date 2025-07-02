@@ -60,7 +60,7 @@ class Account(models.Model):
         ]
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(account_role__in=['admin', 'staff', 'agent']),
+                check=models.Q(account_role__in=['admin', 'staff', 'agent']),
                 name="auth_account_role_check"
             )
         ]
