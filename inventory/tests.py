@@ -291,6 +291,326 @@ class TestDatabaseConstraints:
             )
 
 
+# ========== ENHANCED BUSINESS LOGIC TESTS ==========
+
+@pytest.fixture
+def setup_agency_and_user():
+    """Fixture setup cơ bản cho user và agency"""
+    account = Account.objects.create(username="staff1", password_hash="...", account_role="staff")
+    user = User.objects.create(account=account, full_name="Staff 1", email="staff@example.com")
+    agency_type = AgencyType.objects.create(type_name="Loại 1", max_debt=Decimal("10000000"))
+    district = District.objects.create(city_name="HCM", district_name="Quận 1", max_agencies=5)
+    agency = Agency.objects.create(
+        agency_name="Đại lý 1",
+        agency_type=agency_type,
+        phone_number="0123456789",
+        address="123 ABC",
+        district=district,
+        email="dl1@example.com",
+        representative="Nguyễn Văn A",
+        reception_date=date.today(),
+        debt_amount=Decimal("0.00")
+    )
+    return user, agency
+
+
+@pytest.mark.django_db
+class TestBusinessLogicReceipt:
+    """Test logic nghiệp vụ cho phiếu nhập"""
+
+    def test_lap_phieu_nhap(self, setup_agency_and_user):
+        """Test lập phiếu nhập - tự động cập nhật tổng tiền và tồn kho"""
+        user, agency = setup_agency_and_user
+        unit = Unit.objects.create(unit_name="Thùng")
+        item = Item.objects.create(item_name="Bút", unit=unit, price=Decimal("10000"), stock_quantity=0)
+
+        # Tạo phiếu nhập
+        receipt = Receipt.objects.create(
+            receipt_date=date.today(),
+            user_id=user.user_id, 
+            agency_id=agency.agency_id,
+            total_amount=Decimal("0.00")
+        )
+        
+        # Tạo chi tiết phiếu nhập
+        detail = ReceiptDetail.objects.create(
+            receipt=receipt,
+            item=item,
+            quantity=10,
+            unit_price=Decimal("10000"),
+            line_total=Decimal("100000")
+        )
+
+        # Refresh để lấy dữ liệu sau trigger
+        receipt.refresh_from_db()
+        item.refresh_from_db()
+        
+        # Tổng tiền phải tự động cập nhật = 10 × 10 000
+        assert receipt.total_amount == Decimal("100000")
+        
+        # Kiểm tra tồn kho được cộng thêm
+        assert item.stock_quantity == 10
+
+    def test_receipt_detail_line_total_calculation(self, setup_agency_and_user):
+        """Test tính toán line_total tự động"""
+        user, agency = setup_agency_and_user
+        unit = Unit.objects.create(unit_name="Cái")
+        item = Item.objects.create(item_name="Thước", unit=unit, price=Decimal("5000"), stock_quantity=0)
+
+        receipt = Receipt.objects.create(
+            receipt_date=date.today(),
+            user_id=user.user_id, 
+            agency_id=agency.agency_id,
+            total_amount=Decimal("0.00")
+        )
+        
+        # Tạo detail với line_total khác quantity * unit_price
+        detail = ReceiptDetail.objects.create(
+            receipt=receipt,
+            item=item,
+            quantity=5,
+            unit_price=Decimal("5000"),
+            line_total=Decimal("20000")  # Sai: phải là 25000
+        )
+        
+        # Nếu có signal, line_total sẽ được tự động sửa về 25 000
+        detail.refresh_from_db()
+        assert detail.line_total == Decimal("25000")
+
+
+@pytest.mark.django_db
+class TestBusinessLogicIssue:
+    """Test logic nghiệp vụ cho phiếu xuất"""
+
+    def test_lap_phieu_xuat_khong_du_ton_kho(self, setup_agency_and_user):
+        """Test xuất hàng khi không đủ tồn kho"""
+        user, agency = setup_agency_and_user
+        unit = Unit.objects.create(unit_name="Cái")
+        item = Item.objects.create(item_name="Thước", unit=unit, price=Decimal("2000"), stock_quantity=5)
+
+        issue = Issue.objects.create(
+            issue_date=date.today(),
+            user_id=user.user_id, 
+            agency_id=agency.agency_id, 
+            total_amount=Decimal("0.00")
+        )
+        
+        with pytest.raises(ValidationError):
+            IssueDetail.objects.create(
+                issue=issue,
+                item=item,
+                quantity=10,  # nhiều hơn tồn kho 5
+                unit_price=Decimal("2040.00"),
+                line_total=Decimal("20400")
+            )
+
+    def test_lap_phieu_xuat_vuot_gioi_han_no(self, setup_agency_and_user):
+        """Test xuất hàng khi vượt giới hạn nợ"""
+        user, agency = setup_agency_and_user
+        agency.debt_amount = Decimal("9999000")  # Gần tới giới hạn 10M
+        agency.save()
+
+        unit = Unit.objects.create(unit_name="Hộp")
+        item = Item.objects.create(item_name="Gôm", unit=unit, price=Decimal("1000"), stock_quantity=100)
+
+        # Tạm thời bỏ kiểm tra giới hạn nợ do chưa có validation ở DB
+        with pytest.raises(ValidationError):
+            IssueDetail.objects.create(
+                issue=Issue.objects.create(issue_date=date.today(), user_id=user.user_id, agency_id=agency.agency_id, total_amount=Decimal("110000")),
+                item=item,
+                quantity=1,
+                unit_price=Decimal("5100"),
+                line_total=Decimal("5100")
+            )
+
+    def test_lap_phieu_xuat_hop_le(self, setup_agency_and_user):
+        """Test xuất hàng hợp lệ - cập nhật tồn kho và công nợ"""
+        user, agency = setup_agency_and_user
+        unit = Unit.objects.create(unit_name="Chai")
+        item = Item.objects.create(item_name="Mực", unit=unit, price=Decimal("5000"), stock_quantity=20)
+
+        issue = Issue.objects.create(
+            issue_date=date.today(),
+            user_id=user.user_id, 
+            agency_id=agency.agency_id,
+            total_amount=Decimal("0.00")
+        )
+        
+        detail = IssueDetail.objects.create(
+            issue=issue,
+            item=item,
+            quantity=10,
+            unit_price=Decimal("5100"),  # đúng quy định 102% giá nhập
+            line_total=Decimal("51000")
+        )
+
+        # Refresh để lấy dữ liệu sau trigger
+        issue.refresh_from_db()
+        item.refresh_from_db() 
+        agency.refresh_from_db()
+
+        # Giá trị đã thay đổi theo business logic
+        assert issue.total_amount == Decimal("51000")
+        assert item.stock_quantity == 10  # 20 - 10
+        assert agency.debt_amount == Decimal("51000")
+
+    def test_issue_price_markup_validation(self, setup_agency_and_user):
+        """Test validation giá xuất phải = 102% giá nhập"""
+        user, agency = setup_agency_and_user
+        unit = Unit.objects.create(unit_name="Cái")
+        item = Item.objects.create(item_name="Bút", unit=unit, price=Decimal("1000"), stock_quantity=20)
+
+        issue = Issue.objects.create(
+            issue_date=date.today(),
+            user_id=user.user_id, 
+            agency_id=agency.agency_id,
+            total_amount=Decimal("0.00")
+        )
+
+        with pytest.raises(ValidationError):
+            IssueDetail.objects.create(
+                issue=issue,
+                item=item,
+                quantity=5,
+                unit_price=Decimal("1000"),
+                line_total=Decimal("5000")
+            )
+
+
+@pytest.mark.django_db
+class TestStockMovements:
+    """Test các chuyển động tồn kho"""
+
+    def test_stock_update_after_receipt(self, setup_agency_and_user):
+        """Test cập nhật tồn kho sau khi nhập hàng"""
+        user, agency = setup_agency_and_user
+        unit = Unit.objects.create(unit_name="Thùng")
+        item = Item.objects.create(item_name="Giấy A4", unit=unit, price=Decimal("80000"), stock_quantity=5)
+
+        receipt = Receipt.objects.create(receipt_date=date.today(), user_id=user.user_id, agency_id=agency.agency_id, total_amount=Decimal("0.00"))
+        
+        # Nhập thêm 10 thùng
+        ReceiptDetail.objects.create(
+            receipt=receipt,
+            item=item,
+            quantity=10,
+            unit_price=Decimal("80000"),
+            line_total=Decimal("800000")
+        )
+
+        item.refresh_from_db()
+        # tồn kho phải +10 => 15
+        assert item.stock_quantity == 15
+
+    def test_stock_update_after_issue(self, setup_agency_and_user):
+        """Test cập nhật tồn kho sau khi xuất hàng"""
+        user, agency = setup_agency_and_user
+        unit = Unit.objects.create(unit_name="Gói")
+        item = Item.objects.create(item_name="Kẹo", unit=unit, price=Decimal("10000"), stock_quantity=50)
+
+        issue = Issue.objects.create(issue_date=date.today(), user_id=user.user_id, agency_id=agency.agency_id, total_amount=Decimal("0.00"))
+        
+        # Xuất 20 gói
+        IssueDetail.objects.create(
+            issue=issue,
+            item=item,
+            quantity=20,
+            unit_price=Decimal("10200"),  # 102%
+            line_total=Decimal("204000")
+        )
+
+        item.refresh_from_db()
+        assert item.stock_quantity == 30
+
+    def test_multiple_transactions_stock_calculation(self, setup_agency_and_user):
+        """Test tính tồn kho với nhiều giao dịch"""
+        user, agency = setup_agency_and_user
+        unit = Unit.objects.create(unit_name="Cuộn")
+        item = Item.objects.create(item_name="Dây điện", unit=unit, price=Decimal("10000"), stock_quantity=0)
+
+        # Nhập 50
+        receipt = Receipt.objects.create(receipt_date=date.today(), user_id=user.user_id, agency_id=agency.agency_id, total_amount=Decimal("0.00"))
+        ReceiptDetail.objects.create(
+            receipt=receipt, 
+            item=item, 
+            quantity=50, 
+            unit_price=Decimal("10000"), 
+            line_total=Decimal("500000")
+        )
+
+        # Xuất 20
+        issue = Issue.objects.create(issue_date=date.today(), user_id=user.user_id, agency_id=agency.agency_id, total_amount=Decimal("0.00"))
+        IssueDetail.objects.create(
+            issue=issue, 
+            item=item, 
+            quantity=20, 
+            unit_price=Decimal("10200"), 
+            line_total=Decimal("204000")
+        )
+
+        # Nhập thêm 15
+        receipt2 = Receipt.objects.create(receipt_date=date.today(), user_id=user.user_id, agency_id=agency.agency_id, total_amount=Decimal("0.00"))
+        ReceiptDetail.objects.create(
+            receipt=receipt2, 
+            item=item, 
+            quantity=15, 
+            unit_price=Decimal("10000"), 
+            line_total=Decimal("150000")
+        )
+
+        item.refresh_from_db()
+        # Tồn kho cuối = 0 + 50 - 20 + 15 = 45
+        assert item.stock_quantity == 45
+
+
+@pytest.mark.django_db
+class TestDebtManagement:
+    """Test quản lý công nợ"""
+
+    def test_debt_increase_after_issue(self, setup_agency_and_user):
+        """Test tăng công nợ sau khi xuất hàng"""
+        user, agency = setup_agency_and_user
+        unit = Unit.objects.create(unit_name="Hộp")
+        item = Item.objects.create(item_name="Bánh", unit=unit, price=Decimal("15000"), stock_quantity=30)
+
+        initial_debt = agency.debt_amount
+
+        issue = Issue.objects.create(issue_date=date.today(), user_id=user.user_id, agency_id=agency.agency_id, total_amount=Decimal("0.00"))
+        IssueDetail.objects.create(
+            issue=issue,
+            item=item,
+            quantity=5,
+            unit_price=Decimal("15300"),  # 102%
+            line_total=Decimal("76500")
+        )
+
+        agency.refresh_from_db()
+        assert agency.debt_amount == initial_debt + Decimal("76500")
+
+    def test_debt_limit_enforcement(self, setup_agency_and_user):
+        """Test thực thi giới hạn nợ"""
+        user, agency = setup_agency_and_user
+        
+        # Set debt gần giới hạn
+        agency.debt_amount = Decimal("9999000")  # Còn 1000 so với giới hạn 10M
+        agency.save()
+
+        unit = Unit.objects.create(unit_name="Chai")
+        item = Item.objects.create(item_name="Nước", unit=unit, price=Decimal("5000"), stock_quantity=100)
+
+        # Validation giới hạn nợ chưa được áp dụng
+        with pytest.raises(ValidationError):
+            IssueDetail.objects.create(
+                issue=Issue.objects.create(issue_date=date.today(), user_id=user.user_id, agency_id=agency.agency_id, total_amount=Decimal("0.00")),
+                item=item,
+                quantity=1,
+                unit_price=Decimal("5100"),
+                line_total=Decimal("5100")
+            )
+
+
+# ========== DATABASE VIEWS AND FIXTURES ==========
+
 @pytest.fixture(scope='session')
 def apply_views(django_db_setup, django_db_blocker):
     """
@@ -299,22 +619,16 @@ def apply_views(django_db_setup, django_db_blocker):
     """
     with django_db_blocker.unblock():
         # Construct the path to the SQL file relative to this test file.
-        # __file__ is the path to the current file (tests.py)
-        # os.path.dirname gives the directory of the file.
-        # os.path.join is used to safely join path components.
-        # Correctly locate the 'db/newddl.sql' file from the project root.
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         sql_file_path = os.path.join(base_dir, 'db', 'newddl.sql')
 
         with open(sql_file_path, 'r') as f:
             sql = f.read()
             # Split SQL file into individual statements.
-            # This is a simple split, might need adjustment for complex SQL.
             statements = [s.strip() for s in sql.split(';') if s.strip()]
             with connection.cursor() as cursor:
                 for statement in statements:
                     # Execute each statement, ignoring potential errors if views/schemas already exist.
-                    # This makes the fixture runnable multiple times without failure.
                     try:
                         cursor.execute(statement)
                     except Exception:
@@ -341,4 +655,39 @@ class TestViews:
         with connection.cursor() as cursor:
             cursor.execute("SELECT * FROM inventory.v_stock_balance")
             rows = cursor.fetchall()
-            assert isinstance(rows, list) 
+            assert isinstance(rows, list)
+
+    def test_view_ton_kho_with_data(self, setup_agency_and_user):
+        """Test view tồn kho với dữ liệu thực tế"""
+        user, agency = setup_agency_and_user
+        unit = Unit.objects.create(unit_name="Cuộn")
+        item = Item.objects.create(item_name="Dây điện", unit=unit, price=Decimal("10000"), stock_quantity=0)
+
+        # Giả lập phiếu nhập 50
+        receipt = Receipt.objects.create(receipt_date=date.today(), user_id=user.user_id, agency_id=agency.agency_id, total_amount=Decimal("0.00"))
+        ReceiptDetail.objects.create(
+            receipt=receipt, 
+            item=item, 
+            quantity=50, 
+            unit_price=Decimal("10000"), 
+            line_total=Decimal("500000")
+        )
+
+        # Giả lập phiếu xuất 20
+        issue = Issue.objects.create(issue_date=date.today(), user_id=user.user_id, agency_id=agency.agency_id, total_amount=Decimal("0.00"))
+        IssueDetail.objects.create(
+            issue=issue, 
+            item=item, 
+            quantity=20, 
+            unit_price=Decimal("10200"), 
+            line_total=Decimal("204000")
+        )
+
+        # Truy vấn view v_stock_balance
+        with connection.cursor() as cursor:
+            cursor.execute(f"SELECT stock_on_hand FROM inventory.v_stock_balance WHERE item_id = {item.item_id}")
+            result = cursor.fetchone()
+            if result:
+                stock_on_hand = result[0]
+                assert stock_on_hand == 30  # 50 - 20
+

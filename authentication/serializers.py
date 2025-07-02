@@ -45,12 +45,25 @@ class UserProfileSerializer(serializers.ModelSerializer):
     """Serializer for user profile info"""
     account_role = serializers.CharField(source='account.account_role', read_only=True)
     username = serializers.CharField(source='account.username', read_only=True)
+    agency_id = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = ['user_id', 'full_name', 'email', 'phone_number', 'address', 
-                 'account_role', 'username', 'created_at', 'updated_at']
+                 'account_role', 'username', 'agency_id', 'created_at', 'updated_at']
         read_only_fields = ['user_id', 'created_at', 'updated_at']
+
+    def get_agency_id(self, obj):
+        """
+        Return the agency_id if the user is linked to an agency.
+        This handles cases where the user might not be an agent (e.g., admin, staff).
+        """
+        from agency.models import Agency
+        try:
+            agency = Agency.objects.get(user_id=obj.user_id)
+            return agency.agency_id
+        except Agency.DoesNotExist:
+            return None
 
     def validate_email(self, value):
         if value:
