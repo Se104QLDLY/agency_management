@@ -17,6 +17,7 @@ from inventory.models import Issue
 from authentication.permissions import CookieJWTAuthentication, FinancePermission
 from .services import FinanceService
 from authentication.models import User
+from django.utils import timezone
 
 
 class PaymentViewSet(viewsets.ModelViewSet):
@@ -57,34 +58,52 @@ class PaymentViewSet(viewsets.ModelViewSet):
         return queryset
     
     def create(self, request, *args, **kwargs):
-        """Create payment and update agency debt using business logic service"""
+        """
+        Create payment with all logic self-contained in the view to ensure correctness.
+        This bypasses the service layer to eliminate potential stale code issues.
+        """
+        from django.db import transaction
+        from decimal import Decimal
+        
+        # Step 1: Validate incoming data using the serializer
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        validated_data = serializer.validated_data
+        
         try:
-            # The service expects a User object, but request.user is an Account object from JWT auth.
-            # We need to fetch the related User profile to pass to the service.
-            try:
-                user_profile = User.objects.get(account=request.user)
-            except User.DoesNotExist:
-                return Response({"error": "User profile not found for the authenticated account."}, status=status.HTTP_400_BAD_REQUEST)
+            # Step 2: Begin a database transaction
+            with transaction.atomic():
+                # Step 3: Get all necessary objects
+                agency_id = validated_data['agency_id']
+                agency = Agency.objects.get(pk=agency_id)
+                user_profile = request.user
+                amount_collected = Decimal(validated_data['amount_collected'])
 
-            payment, debt_info = FinanceService.create_payment(request.data, user_profile)
-            
-            # Return detailed response with debt information
-            detail_serializer = PaymentDetailSerializer(payment)
-            
-            response_data = {
-                "message": "Payment created successfully",
-                "data": {
-                    "payment": detail_serializer.data,
-                    "debt_info": debt_info
-                }
-            }
-            
-            return Response(response_data, status=status.HTTP_201_CREATED)
+                # Step 4: Create the Payment object
+                payment = Payment.objects.create(
+                    agency_id=agency.agency_id,
+                    user_id=user_profile.user_id,
+                    payment_date=validated_data.get('payment_date'),
+                    amount_collected=amount_collected
+                )
+                
+                # Step 5: Update agency debt
+                agency.debt_amount -= amount_collected
+                agency.save()
+
+                # Step 6: Return a success response
+                response_serializer = PaymentDetailSerializer(payment)
+                return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+        except Agency.DoesNotExist:
+            return Response({"error": "Agency not found."}, status=status.HTTP_404_NOT_FOUND)
+        except User.DoesNotExist:
+            return Response({"error": "User profile not found for authenticated account."}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            # Catch any other unexpected errors
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ReportViewSet(viewsets.ModelViewSet):
@@ -224,6 +243,54 @@ class DebtViewSet(viewsets.ViewSet):
         return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
+    def sales(self, request):
+        """
+        Generate a sales report grouped by month.
+        Filters: ?agency_id=, ?from=YYYY-MM-DD, ?to=YYYY-MM-DD
+        """
+        from django.db.models.functions import TruncMonth
+        from django.db.models import Count, Sum
+        from decimal import Decimal
+
+        agency_id = request.query_params.get('agency_id')
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+
+        issues_query = Issue.objects.all()
+
+        if agency_id:
+            issues_query = issues_query.filter(agency_id=agency_id)
+        if date_from:
+            issues_query = issues_query.filter(issue_date__gte=date_from)
+        if date_to:
+            issues_query = issues_query.filter(issue_date__lte=date_to)
+
+        sales_data = (
+            issues_query
+            .annotate(month=TruncMonth('issue_date'))
+            .values('month')
+            .annotate(
+                total_revenue=Sum('total_amount', default=Decimal('0.0')),
+                total_issues=Count('issue_id'),
+                new_debt_generated=Sum('total_amount', default=Decimal('0.0')) # Simplified, assumes all issues generate debt
+            )
+            .order_by('month')
+        )
+
+        # Format the month to string 'YYYY-MM'
+        formatted_data = [
+            {
+                "month": item['month'].strftime('%Y-%m'),
+                "total_revenue": item['total_revenue'],
+                "total_issues": item['total_issues'],
+                "new_debt_generated": item['new_debt_generated'],
+            }
+            for item in sales_data
+        ]
+        
+        return Response(formatted_data)
+    
+    @action(detail=False, methods=['get'])
     def aging(self, request):
         """Get debt aging analysis"""
         agency_id = request.query_params.get('agency_id')
@@ -251,18 +318,15 @@ class DebtViewSet(viewsets.ViewSet):
             last_issue = Issue.objects.filter(agency_id=agency.agency_id).order_by('-issue_date').first()
             
             if last_issue:
-                from datetime import date
-                days_since_issue = (date.today() - last_issue.issue_date).days
+                days_since_issue = (timezone.now().date() - last_issue.issue_date).days
                 
-                # Determine aging bucket
+                bucket = '90+'
                 if days_since_issue <= 30:
                     bucket = '0-30'
                 elif days_since_issue <= 60:
                     bucket = '31-60'
                 elif days_since_issue <= 90:
                     bucket = '61-90'
-                else:
-                    bucket = '90+'
                 
                 aging_data['aging_buckets'][bucket]['count'] += 1
                 aging_data['aging_buckets'][bucket]['amount'] += float(agency.debt_amount)
@@ -273,9 +337,9 @@ class DebtViewSet(viewsets.ViewSet):
             aging_data['agencies'].append({
                 'agency_id': agency.agency_id,
                 'agency_name': agency.agency_name,
-                'debt_amount': agency.debt_amount,
-                'last_issue_date': last_issue.issue_date if last_issue else None,
-                'days_since_issue': days_since_issue if last_issue else None
+                'debt_amount': float(agency.debt_amount),
+                'days_since_issue': days_since_issue if last_issue else None,
+                'last_issue_date': last_issue.issue_date if last_issue else None
             })
-        
+            
         return Response(aging_data)

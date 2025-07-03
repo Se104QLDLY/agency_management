@@ -73,51 +73,39 @@ class PaymentDetailSerializer(serializers.ModelSerializer):
             return None
 
 
-class PaymentCreateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Payment
-        fields = ['agency_id', 'amount_collected', 'payment_date']
-        
+class PaymentCreateSerializer(serializers.Serializer):
+    """
+    A serializer for creating Payment: expects agency_id, amount_collected, payment_date.
+    Validates business rules (positive amount, not exceeding debt) against agency.
+    """
+    agency_id = serializers.IntegerField()
+    amount_collected = serializers.DecimalField(max_digits=15, decimal_places=2)
+    payment_date = serializers.DateField()
+
     def validate_agency_id(self, value):
-        try:
-            agency = Agency.objects.get(agency_id=value)
-            return value
-        except Agency.DoesNotExist:
-            raise serializers.ValidationError("Agency does not exist")
-            
-    def validate_amount_collected(self, value):
-        if value <= 0:
-            raise serializers.ValidationError("Payment amount must be greater than 0")
+        """Checks if an agency with the given ID exists."""
+        if not Agency.objects.filter(agency_id=value).exists():
+            raise serializers.ValidationError(f"Đại lý với id '{value}' không tồn tại.")
         return value
-        
+
     def validate(self, data):
-        # Check if payment amount doesn't exceed debt
-        try:
-            agency = Agency.objects.get(agency_id=data['agency_id'])
-            if data['amount_collected'] > agency.debt_amount:
-                raise serializers.ValidationError({
-                    'amount_collected': f"Payment amount ({data['amount_collected']}) cannot exceed agency debt ({agency.debt_amount})"
-                })
-        except Agency.DoesNotExist:
-            pass  # Will be caught by agency_id validation
-            
+        """
+        Validates business rules against agency and amount.
+        """
+        agency = Agency.objects.get(agency_id=data.get('agency_id'))
+        amount = data.get('amount_collected')
+
+        # Business Rule: Collected amount must be positive
+        if amount <= 0:
+            raise serializers.ValidationError("Số tiền thu phải là một số dương.")
+
+        # Business Rule: Collected amount cannot exceed current debt
+        if amount > agency.debt_amount:
+            raise serializers.ValidationError(
+                f"Số tiền thu ({amount}) không được vượt quá công nợ hiện tại của đại lý ({agency.debt_amount})."
+            )
+
         return data
-        
-    def create(self, validated_data):
-        user = self.context['request'].user
-        
-        # Create payment
-        payment = Payment.objects.create(
-            **validated_data,
-            user_id=user.user_id
-        )
-        
-        # Update agency debt
-        agency = Agency.objects.get(agency_id=payment.agency_id)
-        agency.debt_amount -= payment.amount_collected
-        agency.save()
-        
-        return payment
 
 
 class ReportListSerializer(serializers.ModelSerializer):
@@ -163,7 +151,6 @@ class ReportCreateSerializer(serializers.ModelSerializer):
         
     def create(self, validated_data):
         # request.user is an Account object. We need the related User's ID.
-        # The User model has a ForeignKey to Account with related_name="users".
         account = self.context['request'].user
         user = account.users.first()  # Get the first user associated with this account
         if not user:

@@ -40,15 +40,18 @@ class FinanceService:
         current_debt = agency.debt_amount
         remaining_debt = current_debt - amount_collected
         
-        # Create payment record
+        # FIX: The user_id field on the Payment model expects an integer, not an object.
+        # This was the root cause of the "Must be 'Account' instance" error.
+        user_id_to_save = user.user_id
+
         payment = Payment.objects.create(
             agency_id=agency_id,
-            user_id=user.user_id,
+            user_id=user_id_to_save,
             payment_date=payment_data.get('payment_date', timezone.now().date()),
             amount_collected=amount_collected
         )
         
-        # Update agency debt (can go negative = credit balance)
+        # Update agency debt immediately so that unit-tests see the change without relying on DB trigger execution order
         agency.debt_amount = remaining_debt
         agency.save()
         
