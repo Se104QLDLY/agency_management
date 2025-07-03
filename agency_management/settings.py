@@ -223,3 +223,17 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
 ]
+
+# === START: JWT COOKIE AUTHENTICATION SETTINGS ===
+# Settings for the custom CookieJWTAuthentication class
+
+# Use 'Lax' for development (HTTP) and 'None' for production (HTTPS)
+AUTH_COOKIE_SAMESITE = config('AUTH_COOKIE_SAMESITE', default='Lax')
+
+# In production, this should be True
+AUTH_COOKIE_SECURE = config('AUTH_COOKIE_SECURE', default=False, cast=bool) 
+
+# You can also define other cookie properties if needed by your custom class
+AUTH_COOKIE_HTTP_ONLY = True
+AUTH_COOKIE_PATH = "/"
+# === END: JWT COOKIE AUTHENTICATION SETTINGS ===
