@@ -242,6 +242,54 @@ class DebtViewSet(viewsets.ViewSet):
         return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
+    def sales(self, request):
+        """
+        Generate a sales report grouped by month.
+        Filters: ?agency_id=, ?from=YYYY-MM-DD, ?to=YYYY-MM-DD
+        """
+        from django.db.models.functions import TruncMonth
+        from django.db.models import Count, Sum
+        from decimal import Decimal
+
+        agency_id = request.query_params.get('agency_id')
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+
+        issues_query = Issue.objects.all()
+
+        if agency_id:
+            issues_query = issues_query.filter(agency_id=agency_id)
+        if date_from:
+            issues_query = issues_query.filter(issue_date__gte=date_from)
+        if date_to:
+            issues_query = issues_query.filter(issue_date__lte=date_to)
+
+        sales_data = (
+            issues_query
+            .annotate(month=TruncMonth('issue_date'))
+            .values('month')
+            .annotate(
+                total_revenue=Sum('total_amount', default=Decimal('0.0')),
+                total_issues=Count('issue_id'),
+                new_debt_generated=Sum('total_amount', default=Decimal('0.0')) # Simplified, assumes all issues generate debt
+            )
+            .order_by('month')
+        )
+
+        # Format the month to string 'YYYY-MM'
+        formatted_data = [
+            {
+                "month": item['month'].strftime('%Y-%m'),
+                "total_revenue": item['total_revenue'],
+                "total_issues": item['total_issues'],
+                "new_debt_generated": item['new_debt_generated'],
+            }
+            for item in sales_data
+        ]
+        
+        return Response(formatted_data)
+    
+    @action(detail=False, methods=['get'])
     def aging(self, request):
         """Get debt aging analysis"""
         agency_id = request.query_params.get('agency_id')
