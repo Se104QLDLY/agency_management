@@ -12,7 +12,7 @@ class PaymentListSerializer(serializers.ModelSerializer):
         model = Payment
         fields = [
             'payment_id', 'payment_date', 'agency_id', 'agency_name',
-            'user_id', 'user_name', 'amount_collected', 'created_at'
+            'user_id', 'user_name', 'amount_collected', 'status', 'status_reason', 'created_at'
         ]
         
     def get_agency_name(self, obj):
@@ -40,7 +40,7 @@ class PaymentDetailSerializer(serializers.ModelSerializer):
         model = Payment
         fields = [
             'payment_id', 'payment_date', 'agency_id', 'agency_name',
-            'user_id', 'user_name', 'amount_collected', 'created_at',
+            'user_id', 'user_name', 'amount_collected', 'status', 'status_reason', 'created_at',
             'debt_before', 'debt_after'
         ]
         
@@ -108,14 +108,27 @@ class PaymentCreateSerializer(serializers.Serializer):
         return data
 
 
+class PaymentStatusUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Payment
+        fields = ['status', 'status_reason']
+
+    def validate_status(self, value):
+        allowed_statuses = ['pending', 'completed', 'failed']
+        if value not in allowed_statuses:
+            raise serializers.ValidationError(f"Status must be one of {allowed_statuses}")
+        return value
+
+
 class ReportListSerializer(serializers.ModelSerializer):
     created_by_name = serializers.SerializerMethodField()
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True)
     
     class Meta:
         model = Report
         fields = [
             'report_id', 'report_type', 'report_date',
-            'created_by', 'created_by_name', 'created_at'
+            'created_by', 'created_by_name', 'created_at', 'created_by_username'
         ]
         
     def get_created_by_name(self, obj):

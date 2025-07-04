@@ -8,7 +8,7 @@ from django.db.models import Q, Sum, Max
 from django.db import connection
 from .models import Payment, Report
 from .serializers import (
-    PaymentListSerializer, PaymentDetailSerializer, PaymentCreateSerializer,
+    PaymentListSerializer, PaymentDetailSerializer, PaymentCreateSerializer, PaymentStatusUpdateSerializer,
     ReportListSerializer, ReportDetailSerializer, ReportCreateSerializer,
     DebtTransactionSerializer, DebtSummarySerializer
 )
@@ -40,6 +40,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
             return PaymentListSerializer
         elif self.action == 'create':
             return PaymentCreateSerializer
+        elif self.action == 'update_status':
+            return PaymentStatusUpdateSerializer
         else:
             return PaymentDetailSerializer
     
@@ -104,6 +106,15 @@ class PaymentViewSet(viewsets.ModelViewSet):
         except Exception as e:
             # Catch any other unexpected errors
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['patch'], url_path='status', url_name='update-status')
+    def update_status(self, request, pk=None):
+        """Update the status of a payment."""
+        payment = self.get_object()
+        serializer = self.get_serializer(payment, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
 
 class ReportViewSet(viewsets.ModelViewSet):

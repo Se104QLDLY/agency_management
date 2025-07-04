@@ -10,7 +10,9 @@ from .serializers import (
     UnitSerializer,
     ItemListSerializer, ItemDetailSerializer, ItemCreateUpdateSerializer,
     ReceiptListSerializer, ReceiptDetailNestedSerializer, ReceiptCreateSerializer,
-    IssueListSerializer, IssueDetailNestedSerializer, IssueCreateSerializer
+    ReceiptStatusUpdateSerializer,
+    IssueListSerializer, IssueDetailNestedSerializer, IssueCreateSerializer,
+    IssueStatusUpdateSerializer
 )
 from authentication.permissions import CookieJWTAuthentication, InventoryPermission
 from .services import InventoryService
@@ -110,6 +112,8 @@ class ReceiptViewSet(viewsets.ModelViewSet):
             return ReceiptListSerializer
         elif self.action == 'create':
             return ReceiptCreateSerializer
+        elif self.action == 'update_status':
+            return ReceiptStatusUpdateSerializer
         else:
             return ReceiptDetailNestedSerializer
     
@@ -139,6 +143,15 @@ class ReceiptViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+    @action(detail=True, methods=['patch'], url_path='status', url_name='update-status')
+    def update_status(self, request, pk=None):
+        """Update the status of a receipt."""
+        receipt = self.get_object()
+        serializer = self.get_serializer(receipt, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
 
 class IssueViewSet(viewsets.ModelViewSet):
     """
@@ -160,6 +173,8 @@ class IssueViewSet(viewsets.ModelViewSet):
             return IssueListSerializer
         elif self.action == 'create':
             return IssueCreateSerializer
+        elif self.action == 'update_status':
+            return IssueStatusUpdateSerializer
         else:
             return IssueDetailNestedSerializer
     
@@ -187,10 +202,8 @@ class IssueViewSet(viewsets.ModelViewSet):
             # Business rule violations - handled by custom exception handler
             raise
         except Exception as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            # Catch any other unexpected errors
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=False, methods=['get'])
     def by_agency(self, request):
@@ -206,28 +219,11 @@ class IssueViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(issues, many=True)
         return Response(serializer.data)
 
-    @action(detail=True, methods=['patch'])
+    @action(detail=True, methods=['patch'], url_path='status', url_name='update-status')
     def update_status(self, request, pk=None):
-        """Update issue status"""
+        """Update the status of an issue."""
         issue = self.get_object()
-        new_status = request.data.get('status')
-        status_reason = request.data.get('status_reason', '')
-        
-        if not new_status:
-            return Response(
-                {'error': 'status field is required'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        if new_status not in dict(Issue.STATUS_CHOICES):
-            return Response(
-                {'error': f'Invalid status. Must be one of: {[choice[0] for choice in Issue.STATUS_CHOICES]}'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        issue.status = new_status
-        issue.status_reason = status_reason
-        issue.save()
-        
-        serializer = self.get_serializer(issue)
+        serializer = self.get_serializer(issue, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
         return Response(serializer.data)

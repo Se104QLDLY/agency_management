@@ -78,7 +78,7 @@ class ReceiptListSerializer(serializers.ModelSerializer):
         model = Receipt
         fields = [
             'receipt_id', 'receipt_date', 'agency_id', 'agency_name',
-            'user_id', 'user_name', 'total_amount', 'created_at'
+            'user_id', 'user_name', 'total_amount', 'status', 'status_reason', 'created_at'
         ]
         
     def get_agency_name(self, obj):
@@ -103,7 +103,7 @@ class ReceiptDetailNestedSerializer(serializers.ModelSerializer):
         model = Receipt
         fields = [
             'receipt_id', 'receipt_date', 'agency_id', 'user_id',
-            'total_amount', 'created_at', 'details'
+            'total_amount', 'status', 'status_reason', 'created_at', 'details'
         ]
 
 
@@ -145,6 +145,18 @@ class ReceiptCreateSerializer(serializers.ModelSerializer):
             item.save()
         
         return receipt
+
+
+class ReceiptStatusUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Receipt
+        fields = ['status', 'status_reason']
+
+    def validate_status(self, value):
+        allowed_statuses = ['processing', 'completed', 'cancelled']
+        if value not in allowed_statuses:
+            raise serializers.ValidationError(f"Status must be one of {allowed_statuses}")
+        return value
 
 
 class IssueDetailSerializer(serializers.ModelSerializer):
@@ -309,4 +321,16 @@ class IssueCreateSerializer(serializers.ModelSerializer):
         agency.debt_amount += total_amount
         agency.save()
         
-        return issue 
+        return issue
+
+
+class IssueStatusUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Issue
+        fields = ['status', 'status_reason']
+
+    def validate_status(self, value):
+        allowed_statuses = ['processing', 'confirmed', 'postponed', 'cancelled']
+        if value not in allowed_statuses:
+            raise serializers.ValidationError(f"Status must be one of {allowed_statuses}")
+        return value 

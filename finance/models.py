@@ -17,6 +17,8 @@ class Payment(models.Model):
     agency_id = models.IntegerField(db_column="agency_id")
     user_id = models.IntegerField(db_column="user_id")
     amount_collected = models.DecimalField(max_digits=15, decimal_places=2, db_column="amount_collected")
+    status = models.CharField(max_length=20, db_column="status", default='pending')
+    status_reason = models.TextField(db_column="status_reason", null=True, blank=True)
     created_at = models.DateTimeField(null=True, blank=True, db_column="created_at")
 
     class Meta:

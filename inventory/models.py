@@ -59,6 +59,8 @@ class Receipt(models.Model):
         max_digits=18, decimal_places=2, db_column="total_amount",
         validators=[MinValueValidator(0.00)]
     )
+    status = models.CharField(max_length=20, db_column="status", default='processing')
+    status_reason = models.TextField(db_column="status_reason", null=True, blank=True)
     created_at = models.DateTimeField(null=True, blank=True, db_column="created_at")
 
     class Meta:

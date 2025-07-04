@@ -7,27 +7,31 @@
 # Feel free to rename the models, but don't rename db_table values or field names.
 from django.db import models
 from django.core.exceptions import ValidationError
+from django.contrib.auth.hashers import make_password
 
 
 class AccountManager(models.Manager):
-    def create_user(self, username, password_hash, account_role, **extra_fields):
+    def create_user(self, username, password, account_role, **extra_fields):
         if not username:
             raise ValueError("Username is required")
         if account_role not in dict(Account.ACCOUNT_ROLE_CHOICES):
             raise ValueError("Invalid account_role")
+
+        hashed_password = make_password(password)
+
         account = self.model(
             username=username,
-            password_hash=password_hash,
+            password_hash=hashed_password,
             account_role=account_role,
             **extra_fields
         )
         account.save(using=self._db)
         return account
 
-    def create_superuser(self, username, password_hash, **extra_fields):
+    def create_superuser(self, username, password, **extra_fields):
         return self.create_user(
             username=username,
-            password_hash=password_hash,
+            password=password,
             account_role=Account.ADMIN,
             **extra_fields
         )
