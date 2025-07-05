@@ -71,8 +71,9 @@ class AgencyDetailSerializer(serializers.ModelSerializer):
     phone = serializers.CharField(source='phone_number')
     address = serializers.CharField()
     email = serializers.CharField(allow_blank=True, allow_null=True)
+    representative = serializers.CharField(allow_blank=True, allow_null=True)
     current_debt = serializers.DecimalField(source='debt_amount', max_digits=15, decimal_places=2, read_only=True)
-    debt_limit = serializers.SerializerMethodField()
+    debt_limit = serializers.DecimalField(source='agency_type.max_debt', max_digits=15, decimal_places=2, read_only=True)
     is_active = serializers.SerializerMethodField()
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
@@ -81,7 +82,7 @@ class AgencyDetailSerializer(serializers.ModelSerializer):
         model = Agency
         fields = [
             'id', 'code', 'name', 'type', 'type_id', 'district', 'district_id',
-            'address', 'phone', 'email', 'current_debt', 'debt_limit', 'is_active',
+            'address', 'phone', 'email', 'representative', 'current_debt', 'debt_limit', 'is_active',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'code', 'type', 'district', 'current_debt', 'debt_limit', 'is_active', 'created_at', 'updated_at']
@@ -89,10 +90,6 @@ class AgencyDetailSerializer(serializers.ModelSerializer):
     def get_code(self, obj):
         """Generate a code based on agency_id"""
         return f"DL{obj.agency_id:03d}"
-    
-    def get_debt_limit(self, obj):
-        """Get debt limit from agency type"""
-        return obj.agency_type.max_debt if obj.agency_type else 0
     
     def get_is_active(self, obj):
         """For now, assume all agencies are active - can be updated later"""
@@ -111,8 +108,8 @@ class AgencyDetailSerializer(serializers.ModelSerializer):
         return value
     
     def update(self, instance, validated_data):
-        """Update agency with proper field mapping"""
-        # Map frontend fields to model fields
+        """Update agency with proper field mapping - does NOT modify AgencyType.max_debt"""
+        # Direct field updates - using the source mapping
         if 'agency_name' in validated_data:
             instance.agency_name = validated_data['agency_name']
         if 'phone_number' in validated_data:
@@ -121,13 +118,21 @@ class AgencyDetailSerializer(serializers.ModelSerializer):
             instance.address = validated_data['address']
         if 'email' in validated_data:
             instance.email = validated_data['email']
+        if 'representative' in validated_data:
+            instance.representative = validated_data['representative']
         
-        # Handle foreign key updates
-        agency_type_id = validated_data.get('agency_type', {}).get('agency_type_id')
+        # Handle agency type update - ONLY change the reference, NOT the AgencyType.max_debt
+        agency_type_data = validated_data.get('agency_type', {})
+        agency_type_id = agency_type_data.get('agency_type_id')
         if agency_type_id:
-            instance.agency_type = AgencyType.objects.get(agency_type_id=agency_type_id)
-            
-        district_id = validated_data.get('district', {}).get('district_id')
+            # Update agency type reference - debt limit will be automatically reflected via the relationship
+            new_agency_type = AgencyType.objects.get(agency_type_id=agency_type_id)
+            instance.agency_type = new_agency_type
+            # Note: We do NOT modify new_agency_type.max_debt - it remains unchanged
+        
+        # Handle district update
+        district_data = validated_data.get('district', {})
+        district_id = district_data.get('district_id')
         if district_id:
             instance.district = District.objects.get(district_id=district_id)
         

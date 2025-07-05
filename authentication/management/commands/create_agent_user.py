@@ -26,7 +26,7 @@ class Command(BaseCommand):
                 account = Account.objects.create_user(
                     username=username,
                     password=password,
-                    account_role='agent'
+                    account_role='admin'
                 )
 
                 # Create the associated User profile

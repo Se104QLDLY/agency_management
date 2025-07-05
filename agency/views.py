@@ -131,35 +131,6 @@ class AgencyViewSet(viewsets.ModelViewSet):
         response_serializer = AgencyDetailSerializer(agency)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['post'])
-    def approve(self, request, pk=None):
-        """
-        Approve pending agency per docs/flow.md
-        Sets approval timestamp and initializes debt tracking
-        """
-        agency = self.get_object()
-        
-        # Business logic: Can only approve if not already approved
-        # Note: DDL.sql doesn't have approval status fields
-        # This would need schema extension for full workflow
-        
-        with transaction.atomic():
-            # Update approval timestamp (would need DDL schema update)
-            # agency.approved_at = timezone.now()
-            # agency.status = 'ACTIVE'
-            # agency.save()
-            
-            # Initialize debt tracking (debt_amount already defaults to 0 per DDL)
-            # Create initial debt transaction record (would need finance schema)
-            pass
-            
-        return Response({
-            'message': 'Agency approved successfully',
-            'agency_id': agency.agency_id,
-            'agency_name': agency.agency_name,
-            'approved_at': timezone.now().isoformat()
-        })
-
     @action(detail=True, methods=['post'])  
     def block(self, request, pk=None):
         """

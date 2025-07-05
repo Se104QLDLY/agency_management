@@ -83,7 +83,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 user_profile = request.user
                 amount_collected = Decimal(validated_data['amount_collected'])
 
-                # Step 4: Create the Payment object
+                # Step 4: Create the Payment object (status defaults to 'pending')
                 payment = Payment.objects.create(
                     agency_id=agency.agency_id,
                     user_id=user_profile.user_id,
@@ -91,9 +91,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                     amount_collected=amount_collected
                 )
                 
-                # Step 5: Update agency debt
-                agency.debt_amount -= amount_collected
-                agency.save()
+                # Debt update is handled when payment status is set to 'completed'
 
                 # Step 6: Return a success response
                 response_serializer = PaymentDetailSerializer(payment)
