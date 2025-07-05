@@ -28,7 +28,11 @@ class TestFinanceModels(TestCase):
             user_id=1,
             amount_collected=Decimal('100000')
         )
-        assert str(payment) == "Payment #1 - Agency 1 - 100000"
+        # Thêm kiểm tra các trường bắt buộc
+        assert payment.payment_id == 1
+        assert payment.agency_id == 1
+        assert payment.user_id == 1
+        assert str(payment) == f"Payment #1 - Agency 1 - 100000"
         assert payment.amount_collected == Decimal('100000')
     
     def test_payment_clean_validation(self):
@@ -149,9 +153,8 @@ class TestFinanceServices:
             'amount_collected': '200000',
             'payment_date': date.today()
         }
-        
+        # Đảm bảo truyền đúng user_id
         payment, debt_info = FinanceService.create_payment(payment_data, self.user)
-        
         assert payment.agency_id == self.agency.agency_id
         assert payment.amount_collected == Decimal('200000')
         assert payment.user_id == self.user.account.account_id
@@ -296,6 +299,9 @@ class TestFinanceAPIs:
             'amount_collected': '100000'
         }
         response = self.client.post(url, data)
+        # Nếu trả về 500, in log chi tiết
+        if response.status_code == 500:
+            print('API error:', response.data)
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data['data']['payment']['amount_collected'] == '100000.00'
 
@@ -309,6 +315,8 @@ class TestFinanceAPIs:
         )
         url = reverse('payment-detail', kwargs={'pk': payment.pk})
         response = self.client.get(url)
+        if response.status_code == 500:
+            print('API error:', response.data)
         assert response.status_code == status.HTTP_200_OK
         assert response.data['amount_collected'] == '50000.00'
 
@@ -481,6 +489,8 @@ class TestFinanceIntegration:
             'amount_collected': '150000'
         }
         response = self.client.post(url, data)
+        if response.status_code == 500:
+            print('API error:', response.data)
         assert response.status_code == status.HTTP_201_CREATED
         
         # 3. Verify debt is updated
@@ -538,4 +548,4 @@ def api_client(user):
     """Create API client and authenticate user"""
     client = APIClient()
     client.force_authenticate(user=user.account)
-    return client 
+    return client

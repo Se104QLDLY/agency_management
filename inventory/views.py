@@ -15,6 +15,8 @@ from .serializers import (
 from authentication.permissions import CookieJWTAuthentication, InventoryPermission
 from .services import InventoryService
 from authentication.exceptions import DebtLimitExceeded, OutOfStock
+from rest_framework.exceptions import PermissionDenied
+from agency_management.agency.models import Agency
 
 
 class UnitViewSet(viewsets.ModelViewSet):
@@ -115,18 +117,58 @@ class ReceiptViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = Receipt.objects.all()
-        
+        user = self.request.user
+        # Admin xem được tất cả, agent/staff chỉ xem được phiếu thu của mình và agency của mình
+        if hasattr(user, 'account') and user.account.account_role != 'admin':
+            try:
+                agency = Agency.objects.get(user_id=user.user_id)
+                queryset = queryset.filter(user_id=user.user_id, agency_id=agency.agency_id)
+            except Agency.DoesNotExist:
+                queryset = queryset.none()
         # Date range filtering
         date_from = self.request.query_params.get('date_from')
         date_to = self.request.query_params.get('date_to')
-        
         if date_from:
             queryset = queryset.filter(receipt_date__gte=date_from)
         if date_to:
             queryset = queryset.filter(receipt_date__lte=date_to)
-            
         return queryset
-    
+
+    def check_object_permission(self, request, obj):
+        user = request.user
+        # Admin có toàn quyền
+        if hasattr(user, 'account') and user.account.account_role == 'admin':
+            return True
+        # Kiểm tra user là chủ agency và user_id, agency_id đều khớp với phiếu thu
+        try:
+            agency = Agency.objects.get(user_id=user.user_id)
+        except Agency.DoesNotExist:
+            raise PermissionDenied('Tài khoản của bạn không thuộc agency nào.')
+        if obj.user_id != user.user_id or obj.agency_id != agency.agency_id:
+            raise PermissionDenied('Bạn không có quyền thao tác với phiếu thu này.')
+        return True
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.check_object_permission(request, instance)
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.check_object_permission(request, instance)
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.check_object_permission(request, instance)
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.check_object_permission(request, instance)
+        return super().destroy(request, *args, **kwargs)
+
     def create(self, request, *args, **kwargs):
         """Create receipt with items using business logic service"""
         try:
