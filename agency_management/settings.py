@@ -88,13 +88,13 @@ WSGI_APPLICATION = "agency_management.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": config('DB_NAME', default='qldl'),
-        "USER": config('DB_USER', default='postgres'),
-        "PASSWORD": config('DB_PASSWORD', default=''),
-        "HOST": config('DB_HOST', default='localhost'),
-        "PORT": config('DB_PORT', default='5432'),
+        "NAME": "QuanLyDaiLy",
+        "USER": "postgres",
+        "PASSWORD": "12082005",
+        "HOST": "localhost",
+        "PORT": "5432",
         "OPTIONS": {
-            "options": config('DB_OPTIONS', default='-c search_path=public,auth,agency,inventory,finance,config')
+            "options": "-c search_path=public,auth,agency,inventory,finance,config"
         },
     }
 }
