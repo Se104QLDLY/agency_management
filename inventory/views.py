@@ -228,9 +228,41 @@ class IssueViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['patch'], url_path='status', url_name='update-status')
     def update_status(self, request, pk=None):
-        """Update the status of an issue."""
+        """
+        Update the status of an issue with proper business logic.
+        Handles stock validation when approving requests.
+        """
         issue = self.get_object()
-        serializer = self.get_serializer(issue, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
+        new_status = request.data.get('status')
+        
+        try:
+            if new_status == 'confirmed' and issue.status == 'processing':
+                # Staff approving a pending request - validate stock and deduct
+                InventoryService.approve_issue(issue, request.user)
+                serializer = self.get_serializer(issue)
+                return Response(serializer.data)
+                
+            elif new_status == 'cancelled' and issue.status == 'processing':
+                # Staff rejecting a pending request
+                rejection_reason = request.data.get('status_reason', 'Rejected by staff')
+                InventoryService.reject_issue(issue, request.user, rejection_reason)
+                serializer = self.get_serializer(issue)
+                return Response(serializer.data)
+                
+            else:
+                # Other status updates (use existing serializer)
+                serializer = self.get_serializer(issue, data=request.data, partial=True)
+                serializer.is_valid(raise_exception=True)
+                serializer.save()
+                return Response(serializer.data)
+                
+        except OutOfStock as e:
+            return Response(
+                {'error': f'Cannot approve request: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except ValueError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )

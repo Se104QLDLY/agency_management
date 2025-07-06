@@ -253,17 +253,25 @@ class StaffAgencyViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        print(f"DEBUG: by_staff API called with staff_id={staff_id}")
+        
         assignments = self.queryset.filter(staff_id=staff_id)
+        print(f"DEBUG: Found {assignments.count()} assignments for staff_id={staff_id}")
+        
         agencies = [assignment.agency for assignment in assignments]
+        print(f"DEBUG: Agencies: {[a.agency_name for a in agencies]}")
         
         # Use AgencyListSerializer for consistency
         agency_serializer = AgencyListSerializer(agencies, many=True)
         
-        return Response({
+        response_data = {
             'staff_id': int(staff_id),
             'agency_count': len(agencies),
             'agencies': agency_serializer.data
-        })
+        }
+        
+        print(f"DEBUG: Returning response: {response_data}")
+        return Response(response_data)
 
     @action(detail=False, methods=['get'])
     def by_agency(self, request):

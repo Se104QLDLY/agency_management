@@ -55,15 +55,21 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def get_agency_id(self, obj):
         """
-        Return the agency_id if the user is linked to an agency.
-        This handles cases where the user might not be an agent (e.g., admin, staff).
+        Return the agency_id if the user is an agent linked to an agency.
+        For staff, this should return None since staff can be assigned to multiple agencies.
         """
         from agency.models import Agency
-        try:
-            agency = Agency.objects.get(user_id=obj.user_id)
-            return agency.agency_id
-        except Agency.DoesNotExist:
-            return None
+        
+        # Only return agency_id for agent role
+        if obj.account.account_role == 'agent':
+            try:
+                agency = Agency.objects.get(user_id=obj.user_id)
+                return agency.agency_id
+            except Agency.DoesNotExist:
+                return None
+        
+        # For staff and admin, return None since they don't have a single agency_id
+        return None
 
     def validate_email(self, value):
         if value:

@@ -1,10 +1,10 @@
 from django.db import transaction
 from django.utils import timezone
 from decimal import Decimal
+from django.db.models import Sum, Max
 from authentication.exceptions import DebtLimitExceeded, OutOfStock
 from agency.models import Agency
 from .models import Item, Receipt, ReceiptDetail, Issue, IssueDetail
-from django.db.models import Max
 
 
 class InventoryService:
@@ -64,8 +64,9 @@ class InventoryService:
     @transaction.atomic
     def create_issue(issue_data, user):
         """
-        Create stock-out issue with debt and stock validation
-        Per docs/flow.md: Validate debt limit → Check stock → Issue → Update debt
+        Create stock-out issue request (without stock validation)
+        Agency can submit requests regardless of stock availability
+        Stock validation will be done during staff approval
         """
         agency_id = issue_data['agency_id']
         # Determine next primary key manually to avoid duplicate key errors without changing DDL
@@ -73,17 +74,13 @@ class InventoryService:
         next_id = current_max + 1
         items_data = issue_data.pop('items', [])
         
-        # Determine next detail primary key to avoid duplicate IssueDetail PK errors
-        current_max_detail = IssueDetail.objects.aggregate(max_id=Max('issue_detail_id'))['max_id'] or 0
-        next_detail_id = current_max_detail + 1
-        
         # Get agency with debt info
         try:
             agency = Agency.objects.select_related('agency_type').get(agency_id=agency_id)
         except Agency.DoesNotExist:
             raise ValueError(f"Agency {agency_id} not found")
         
-        # Calculate total issue amount
+        # Calculate total issue amount (for debt validation)
         total_amount = Decimal('0.00')
         item_validations = []
         
@@ -99,13 +96,7 @@ class InventoryService:
             unit_price = item_data.get('unit_price', item.price)
             line_total = Decimal(quantity) * Decimal(unit_price)
             
-            # Validate stock availability
-            if item.stock_quantity < quantity:
-                raise OutOfStock(
-                    item_name=item.item_name,
-                    requested_qty=quantity,
-                    available_qty=item.stock_quantity
-                )
+            # NOTE: Stock validation removed - will be done during approval
             
             item_validations.append({
                 'item': item,
@@ -116,7 +107,7 @@ class InventoryService:
             
             total_amount += line_total
         
-        # Validate debt limit
+        # Validate debt limit only
         current_debt = agency.debt_amount
         max_debt = agency.agency_type.max_debt
         new_debt = current_debt + total_amount
@@ -128,19 +119,23 @@ class InventoryService:
                 additional_amount=total_amount
             )
         
-        # All validations passed - create issue with manual primary key
+        # Create issue in 'processing' status (pending staff approval)
         issue_date = issue_data.get('issue_date', timezone.now().date())
         issue = Issue(
             issue_id=next_id,
             agency_id=agency_id,
             user_id=user.user_id,
             issue_date=issue_date,
-            total_amount=total_amount
+            total_amount=total_amount,
+            status='processing'  # Default status for new requests
         )
         # force_insert to respect manual PK
         issue.save(force_insert=True)
         
-        # Create issue details and update stock
+        # Create issue details but DON'T update stock yet
+        current_max_detail = IssueDetail.objects.aggregate(max_id=Max('issue_detail_id'))['max_id'] or 0
+        next_detail_id = current_max_detail + 1
+        
         for validation in item_validations:
             item = validation['item']
             
@@ -156,13 +151,9 @@ class InventoryService:
             detail.save(force_insert=True)
             next_detail_id += 1
             
-            # Update stock quantity (reduce)
-            item.stock_quantity -= validation['quantity']
-            item.save()
+            # NOTE: Stock deduction removed - will be done during approval
         
-        # Update agency debt
-        agency.debt_amount = new_debt
-        agency.save()
+        # NOTE: Debt update removed - will be done during approval
         
         return issue
     
@@ -250,4 +241,68 @@ class StockCalculationService:
                     'difference': calculated_stock - item.stock_quantity
                 })
         
-        return inconsistencies 
+        return inconsistencies
+    
+    @staticmethod
+    @transaction.atomic
+    def approve_issue(issue, approved_by_user):
+        """
+        Approve issue with stock validation and inventory deduction
+        Called when staff approves a pending issue request
+        """
+        if issue.status != 'processing':
+            raise ValueError(f"Cannot approve issue with status '{issue.status}'. Only 'processing' issues can be approved.")
+        
+        # Get agency for debt validation
+        agency = Agency.objects.select_related('agency_type').get(agency_id=issue.agency_id)
+        
+        # Validate stock availability for all items
+        stock_issues = []
+        for detail in issue.details.all():
+            if detail.item.stock_quantity < detail.quantity:
+                stock_issues.append({
+                    'item_name': detail.item.item_name,
+                    'requested': detail.quantity,
+                    'available': detail.item.stock_quantity
+                })
+        
+        if stock_issues:
+            # Build detailed error message
+            error_msg = "Insufficient stock for the following items:\n"
+            for issue_item in stock_issues:
+                error_msg += f"- {issue_item['item_name']}: requested {issue_item['requested']}, available {issue_item['available']}\n"
+            raise OutOfStock(error_msg)
+        
+        # All stock checks passed - proceed with approval
+        
+        # Deduct stock
+        for detail in issue.details.all():
+            detail.item.stock_quantity -= detail.quantity
+            detail.item.save()
+        
+        # Update agency debt
+        agency.debt_amount += issue.total_amount
+        agency.save()
+        
+        # Update issue status
+        issue.status = 'confirmed'
+        issue.save()
+        
+        return issue
+    
+    @staticmethod
+    @transaction.atomic
+    def reject_issue(issue, rejected_by_user, rejection_reason=None):
+        """
+        Reject issue request
+        Called when staff rejects a pending issue request
+        """
+        if issue.status != 'processing':
+            raise ValueError(f"Cannot reject issue with status '{issue.status}'. Only 'processing' issues can be rejected.")
+        
+        # Update issue status
+        issue.status = 'cancelled'
+        issue.status_reason = rejection_reason or 'Rejected by staff'
+        issue.save()
+        
+        return issue 
