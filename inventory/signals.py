@@ -24,9 +24,31 @@ from agency.models import Agency
 # ---------------------------------------------------------------------
 
 
-def _expected_line_total(quantity: int, unit_price: Decimal) -> Decimal:
+def _expected_line_total(quantity, unit_price) -> Decimal:
     """Calculate line_total = quantity × unit_price with 2-decimal rounding."""
-    return (Decimal(quantity) * unit_price).quantize(Decimal("0.01"))
+    # Convert quantity to Decimal to handle string/int/float inputs
+    try:
+        # Handle various input types for quantity
+        if isinstance(quantity, str):
+            # Remove any non-numeric characters and convert
+            quantity_str = ''.join(c for c in quantity if c.isdigit() or c == '.')
+            quantity_decimal = Decimal(quantity_str) if quantity_str else Decimal('0')
+        else:
+            quantity_decimal = Decimal(str(quantity))
+        
+        # Handle various input types for unit_price
+        if isinstance(unit_price, str):
+            # Remove any non-numeric characters and convert
+            unit_price_str = ''.join(c for c in unit_price if c.isdigit() or c == '.')
+            unit_price_decimal = Decimal(unit_price_str) if unit_price_str else Decimal('0')
+        else:
+            unit_price_decimal = Decimal(str(unit_price))
+        
+        result = (quantity_decimal * unit_price_decimal).quantize(Decimal("0.01"))
+        return result
+        
+    except Exception as e:
+        raise
 
 
 def _price_with_markup(base_price: Decimal) -> Decimal:

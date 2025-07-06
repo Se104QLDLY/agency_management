@@ -73,12 +73,13 @@ class ReceiptDetailCreateSerializer(serializers.ModelSerializer):
 class ReceiptListSerializer(serializers.ModelSerializer):
     agency_name = serializers.SerializerMethodField()
     user_name = serializers.SerializerMethodField()
+    item_count = serializers.SerializerMethodField()
     
     class Meta:
         model = Receipt
         fields = [
             'receipt_id', 'receipt_date', 'agency_id', 'agency_name',
-            'user_id', 'user_name', 'total_amount', 'status', 'status_reason', 'created_at'
+            'user_id', 'user_name', 'total_amount', 'status', 'status_reason', 'created_at', 'item_count'
         ]
         
     def get_agency_name(self, obj):
@@ -94,6 +95,10 @@ class ReceiptListSerializer(serializers.ModelSerializer):
             return user.full_name
         except User.DoesNotExist:
             return "Unknown User"
+            
+    def get_item_count(self, obj):
+        """Get the count of unique items in this receipt"""
+        return obj.details.count()
 
 
 class ReceiptDetailNestedSerializer(serializers.ModelSerializer):
@@ -210,11 +215,12 @@ class IssueListSerializer(serializers.ModelSerializer):
 class IssueDetailNestedSerializer(serializers.ModelSerializer):
     details = IssueDetailSerializer(many=True, read_only=True)
     debt_impact = serializers.SerializerMethodField()
+    agency_name = serializers.SerializerMethodField()
     
     class Meta:
         model = Issue
         fields = [
-            'issue_id', 'issue_date', 'agency_id', 'user_id',
+            'issue_id', 'issue_date', 'agency_id', 'agency_name', 'user_id',
             'total_amount', 'status', 'status_reason', 'created_at', 'details', 'debt_impact'
         ]
         
@@ -228,6 +234,13 @@ class IssueDetailNestedSerializer(serializers.ModelSerializer):
             }
         except Agency.DoesNotExist:
             return None
+
+    def get_agency_name(self, obj):
+        try:
+            agency = Agency.objects.get(agency_id=obj.agency_id)
+            return agency.agency_name
+        except Agency.DoesNotExist:
+            return "Unknown Agency"
 
 
 class IssueCreateSerializer(serializers.ModelSerializer):

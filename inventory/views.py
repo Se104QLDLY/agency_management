@@ -134,7 +134,14 @@ class ReceiptViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         """Create receipt with items using business logic service"""
         try:
-            receipt = InventoryService.create_receipt(request.data, request.user)
+            # Create copy of request data to avoid modifying original
+            receipt_data = request.data.copy()
+            
+            # Always use default distributor agency (ID=5) for receipts
+            # Since receipts are stock-in operations, not customer orders
+            receipt_data['agency_id'] = 5
+            
+            receipt = InventoryService.create_receipt(receipt_data, request.user)
             detail_serializer = ReceiptDetailNestedSerializer(receipt)
             return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
         except Exception as e:
