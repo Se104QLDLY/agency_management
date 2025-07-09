@@ -99,6 +99,7 @@ class AgencyViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """
         Optionally filter by status for different user roles
+        Add security filtering - agents can only see their own agency, staff can only see assigned agencies
         """
         queryset = Agency.objects.select_related('agency_type', 'district')
         
@@ -108,6 +109,29 @@ class AgencyViewSet(viewsets.ModelViewSet):
             # Note: Agency model doesn't have status field in DDL.sql
             # This would need to be added if status workflow is required
             pass
+        
+        # Security filtering based on user role
+        if hasattr(self.request.user, 'user_id'):
+            try:
+                from authentication.models import User
+                requesting_user = User.objects.select_related('account').get(user_id=self.request.user.user_id)
+                
+                if requesting_user.account.account_role == 'agent':
+                    # Agent can only see their own agency
+                    queryset = queryset.filter(user_id=requesting_user.user_id)
+                elif requesting_user.account.account_role == 'staff':
+                    # Staff can only see agencies they're assigned to
+                    assigned_agencies = StaffAgency.objects.filter(staff_id=requesting_user.user_id).values_list('agency_id', flat=True)
+                    if assigned_agencies:
+                        queryset = queryset.filter(agency_id__in=assigned_agencies)
+                    else:
+                        # Staff not assigned to any agency - return empty queryset
+                        queryset = queryset.none()
+                # Admin can see all agencies (no filtering)
+            except Exception as e:
+                print(f"DEBUG: Error in get_queryset filtering: {str(e)}")
+                # On error, return empty queryset for security
+                queryset = queryset.none()
             
         return queryset
 
@@ -254,6 +278,29 @@ class StaffAgencyViewSet(viewsets.ModelViewSet):
             )
         
         print(f"DEBUG: by_staff API called with staff_id={staff_id}")
+        
+        # Kiểm tra quyền truy cập - user chỉ có thể xem agency của chính họ
+        try:
+            if hasattr(request.user, 'user_id'):
+                requesting_user_id = request.user.user_id
+                print(f"DEBUG: requesting_user_id={requesting_user_id}")
+                
+                # Chỉ cho phép staff xem agency của chính họ hoặc admin xem tất cả
+                from authentication.models import User
+                requesting_user = User.objects.select_related('account').get(user_id=requesting_user_id)
+                
+                if requesting_user.account.account_role != 'admin' and str(requesting_user_id) != str(staff_id):
+                    print(f"DEBUG: Access denied - user {requesting_user_id} trying to access staff {staff_id}")
+                    return Response(
+                        {'error': 'Access denied - you can only view your own assignments'}, 
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+        except Exception as e:
+            print(f"DEBUG: Error checking permissions: {str(e)}")
+            return Response(
+                {'error': 'Permission check failed'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
         
         assignments = self.queryset.filter(staff_id=staff_id)
         print(f"DEBUG: Found {assignments.count()} assignments for staff_id={staff_id}")

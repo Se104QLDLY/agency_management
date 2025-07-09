@@ -12,12 +12,29 @@ from .managers import ReportManager
 
 
 class Payment(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Đang chờ xử lý'),
+        ('confirmed', 'Đã xác nhận'),
+        ('cancelled', 'Đã hủy'),
+    ]
+    
     payment_id = models.AutoField(primary_key=True, db_column="payment_id")
     payment_date = models.DateField(db_column="payment_date")
     agency_id = models.IntegerField(db_column="agency_id")
     user_id = models.IntegerField(db_column="user_id")
-    amount_collected = models.DecimalField(max_digits=15, decimal_places=2, db_column="amount_collected")
-    status = models.CharField(max_length=20, db_column="status", default='pending')
+    amount_collected = models.DecimalField(
+        max_digits=15, 
+        decimal_places=2, 
+        db_column="amount_collected",
+        help_text="Số tiền thu được"
+    )
+    status = models.CharField(
+        max_length=20, 
+        choices=STATUS_CHOICES,
+        default='pending',
+        db_column="status",
+        help_text="Trạng thái thanh toán"
+    )
     status_reason = models.TextField(db_column="status_reason", null=True, blank=True)
     created_at = models.DateTimeField(null=True, blank=True, db_column="created_at")
 
@@ -32,12 +49,25 @@ class Payment(models.Model):
 
     def clean(self):
         from agency.models import Agency
-        try:
-            agency = Agency.objects.get(pk=self.agency_id)
-            if self.amount_collected > agency.debt_amount:
-                raise ValidationError({'amount_collected': _('Collected amount cannot exceed agency debt.')})
-        except Agency.DoesNotExist:
-            raise ValidationError({'agency_id': _('Agency does not exist.')})
+        from decimal import Decimal
+        
+        # Validate amount is positive
+        if self.amount_collected and self.amount_collected <= 0:
+            raise ValidationError({'amount_collected': _('Payment amount must be greater than 0.')})
+            
+        # Validate payment doesn't exceed agency debt (only for confirmed payments)
+        if self.status == 'confirmed':
+            try:
+                agency = Agency.objects.get(pk=self.agency_id)
+                if self.amount_collected > agency.debt_amount:
+                    raise ValidationError({
+                        'amount_collected': _(
+                            f'Payment amount ({self.amount_collected}) cannot exceed '
+                            f'agency debt ({agency.debt_amount}).'
+                        )
+                    })
+            except Agency.DoesNotExist:
+                raise ValidationError({'agency_id': _('Agency does not exist.')})
 
     def __str__(self):
         return f"Payment #{self.payment_id} - Agency {self.agency_id} - {self.amount_collected}"

@@ -100,7 +100,7 @@ def handle_receipt_detail_created(sender, instance: ReceiptDetail, created: bool
 
 @receiver(post_save, sender=IssueDetail)
 def handle_issue_detail_created(sender, instance: IssueDetail, created: bool, **kwargs):
-    """Validate markup & stock, decrease stock, update Issue total & agency debt."""
+    """Calculate line totals and validate prices, but DON'T deduct stock or update debt yet."""
     if not created:
         return
 
@@ -110,8 +110,6 @@ def handle_issue_detail_created(sender, instance: IssueDetail, created: bool, **
         # ------------------------------------------------------------
         item = Item.objects.select_for_update().get(pk=instance.item_id)
         issue = Issue.objects.select_for_update().get(pk=instance.issue_id)
-        agency = Agency.objects.select_for_update().get(pk=issue.agency_id)
-        agency_type = agency.agency_type  # has max_debt
 
         # ------------------------------------------------------------
         # 2. Validate price markup (must equal 102 % of base price)
@@ -121,16 +119,13 @@ def handle_issue_detail_created(sender, instance: IssueDetail, created: bool, **
             raise ValidationError("Giá xuất phải bằng 102% giá nhập")
 
         # ------------------------------------------------------------
-        # 3. Validate & update stock
+        # 3. Validate stock availability (but don't deduct yet)
         # ------------------------------------------------------------
         if item.stock_quantity < instance.quantity:
             raise ValidationError("Không đủ hàng trong kho để xuất.")
 
-        item.stock_quantity -= instance.quantity
-        item.save(update_fields=["stock_quantity"])
-
         # ------------------------------------------------------------
-        # 4. Update Issue total_amount
+        # 4. Update Issue total_amount only
         # ------------------------------------------------------------
         issue_total = (
             IssueDetail.objects.filter(issue_id=instance.issue_id).aggregate(total=Sum("line_total"))[
@@ -141,14 +136,23 @@ def handle_issue_detail_created(sender, instance: IssueDetail, created: bool, **
         Issue.objects.filter(pk=instance.issue_id).update(total_amount=issue_total)
 
         # ------------------------------------------------------------
-        # 5. Update Agency debt & enforce limit
+        # 5. Validate debt limit (but don't update debt yet)
         # ------------------------------------------------------------
-        new_debt = (agency.debt_amount or Decimal("0.00")) + instance.line_total
-        if new_debt > agency_type.max_debt:
-            raise ValidationError("Vượt giới hạn nợ của đại lý.")
+        agency = issue.agency if hasattr(issue, 'agency') else None
+        if not agency:
+            from agency.models import Agency
+            agency = Agency.objects.select_related('agency_type').get(pk=issue.agency_id)
+            
+        current_debt = agency.debt_amount or Decimal("0.00")
+        max_debt = agency.agency_type.max_debt
+        
+        # Check if confirming this issue would exceed debt limit
+        if issue.status == 'processing':
+            potential_new_debt = current_debt + issue_total
+            if potential_new_debt > max_debt:
+                raise ValidationError("Xác nhận đơn hàng này sẽ vượt giới hạn nợ của đại lý.")
 
-        agency.debt_amount = new_debt
-        agency.save(update_fields=["debt_amount"])
+        # NOTE: Stock deduction and debt update will happen when status changes to 'confirmed'
 
 
 # ---------------------------------------------------------------------
@@ -176,3 +180,90 @@ def recalc_receipt_total(sender, instance, **kwargs):
 @receiver([post_save, post_delete], sender=IssueDetail)
 def recalc_issue_total(sender, instance, **kwargs):
     update_issue_total(instance.issue_id)
+
+
+# ---------------------------------------------------------------------
+# 4. ISSUE STATUS CHANGE - Handle stock deduction and debt updates
+# ---------------------------------------------------------------------
+
+@receiver(post_save, sender=Issue)
+def handle_issue_status_change(sender, instance: Issue, created: bool, **kwargs):
+    """Handle stock deduction and debt update when issue status changes to 'confirmed'."""
+    
+    # Skip on creation - only handle status changes
+    if created:
+        return
+        
+    # Only process when status becomes 'confirmed'
+    if instance.status != 'confirmed':
+        return
+        
+    # Check if this status change was already processed
+    # (to avoid double-processing in case of multiple saves)
+    if hasattr(instance, '_status_processed'):
+        return
+        
+    with transaction.atomic():
+        # Mark as processed to avoid double-processing
+        instance._status_processed = True
+        
+        # Get agency with lock
+        from agency.models import Agency
+        agency = Agency.objects.select_for_update().get(pk=instance.agency_id)
+        
+        # Track whether we need to rollback if any step fails
+        stock_updates = []
+        
+        try:
+            # 1. Deduct stock for all issue details
+            for detail in instance.details.all():
+                item = Item.objects.select_for_update().get(pk=detail.item_id)
+                
+                # Final stock validation before deduction
+                if item.stock_quantity < detail.quantity:
+                    raise ValidationError(
+                        f"Không đủ hàng trong kho cho sản phẩm {item.item_name}. "
+                        f"Yêu cầu: {detail.quantity}, Còn lại: {item.stock_quantity}"
+                    )
+                
+                # Store original values for potential rollback
+                original_stock = item.stock_quantity
+                
+                # Deduct stock
+                item.stock_quantity -= detail.quantity
+                item.save(update_fields=["stock_quantity"])
+                
+                # Track for potential rollback
+                stock_updates.append({
+                    'item': item,
+                    'original_stock': original_stock,
+                    'deducted': detail.quantity
+                })
+            
+            # 2. Update agency debt
+            original_debt = agency.debt_amount
+            new_debt = (agency.debt_amount or Decimal("0.00")) + instance.total_amount
+            
+            # Final debt limit validation
+            if new_debt > agency.agency_type.max_debt:
+                # Rollback stock changes
+                for update in stock_updates:
+                    update['item'].stock_quantity = update['original_stock']
+                    update['item'].save(update_fields=["stock_quantity"])
+                
+                raise ValidationError(
+                    f"Xác nhận đơn hàng sẽ vượt giới hạn nợ. "
+                    f"Nợ hiện tại: {original_debt}, Giới hạn: {agency.agency_type.max_debt}, "
+                    f"Tổng sau xác nhận: {new_debt}"
+                )
+            
+            # Update debt
+            agency.debt_amount = new_debt
+            agency.save(update_fields=["debt_amount"])
+            
+        except Exception as e:
+            # Rollback any stock changes if debt update fails
+            for update in stock_updates:
+                update['item'].stock_quantity = update['original_stock']
+                update['item'].save(update_fields=["stock_quantity"])
+            raise e

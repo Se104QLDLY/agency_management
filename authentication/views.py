@@ -137,13 +137,34 @@ class CurrentUserView(generics.RetrieveUpdateAPIView):
             print(f"DEBUG: hasattr user_id = {hasattr(user, 'user_id')}")
             if hasattr(user, 'user_id'):
                 print(f"DEBUG: user.user_id = {user.user_id}")
-                return User.objects.select_related('account').get(user_id=user.user_id)
+                user_obj = User.objects.select_related('account').get(user_id=user.user_id)
+                
+                # Kiểm tra thêm để đảm bảo account đang hoạt động và role hợp lệ
+                if user_obj.account.account_role not in [Account.ADMIN, Account.STAFF, Account.AGENT]:
+                    raise Exception(f"Invalid account role: {user_obj.account.account_role}")
+                
+                print(f"DEBUG: Returning user data for {user_obj.full_name} (ID: {user_obj.user_id})")
+                return user_obj
             else:
                 print(f"DEBUG: user attributes = {dir(user)}")
                 raise Exception(f"User object has no user_id attribute: {type(user)}")
+        except User.DoesNotExist:
+            print(f"DEBUG ERROR: User not found for user_id {user.user_id}")
+            raise
         except Exception as e:
             print(f"DEBUG ERROR: {str(e)}")
             raise
+
+    def retrieve(self, request, *args, **kwargs):
+        """Override retrieve to add no-cache headers"""
+        response = super().retrieve(request, *args, **kwargs)
+        
+        # Thêm headers để ngăn cache
+        response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response['Pragma'] = 'no-cache'
+        response['Expires'] = '0'
+        
+        return response
 
 
 class ChangePasswordView(APIView):

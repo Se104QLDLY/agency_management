@@ -247,16 +247,16 @@ class StockCalculationService:
     @transaction.atomic
     def approve_issue(issue, approved_by_user):
         """
-        Approve issue with stock validation and inventory deduction
-        Called when staff approves a pending issue request
+        Approve issue request - this now only changes status.
+        Stock deduction and debt update will be handled by signals.
         """
         if issue.status != 'processing':
             raise ValueError(f"Cannot approve issue with status '{issue.status}'. Only 'processing' issues can be approved.")
         
-        # Get agency for debt validation
+        # Get agency for validation
         agency = Agency.objects.select_related('agency_type').get(agency_id=issue.agency_id)
         
-        # Validate stock availability for all items
+        # Pre-validate stock availability for all items
         stock_issues = []
         for detail in issue.details.all():
             if detail.item.stock_quantity < detail.quantity:
@@ -273,20 +273,18 @@ class StockCalculationService:
                 error_msg += f"- {issue_item['item_name']}: requested {issue_item['requested']}, available {issue_item['available']}\n"
             raise OutOfStock(error_msg)
         
-        # All stock checks passed - proceed with approval
+        # Pre-validate debt limit
+        new_debt = agency.debt_amount + issue.total_amount
+        if new_debt > agency.agency_type.max_debt:
+            raise ValidationError(
+                f"Approving this issue would exceed debt limit. "
+                f"Current debt: {agency.debt_amount}, Limit: {agency.agency_type.max_debt}, "
+                f"Total after approval: {new_debt}"
+            )
         
-        # Deduct stock
-        for detail in issue.details.all():
-            detail.item.stock_quantity -= detail.quantity
-            detail.item.save()
-        
-        # Update agency debt
-        agency.debt_amount += issue.total_amount
-        agency.save()
-        
-        # Update issue status
+        # Change status to 'confirmed' - signals will handle stock deduction and debt update
         issue.status = 'confirmed'
-        issue.save()
+        issue.save(update_fields=['status'])
         
         return issue
     
