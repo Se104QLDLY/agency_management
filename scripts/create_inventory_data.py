@@ -10,6 +10,7 @@ from django.db import transaction
 from decimal import Decimal
 from datetime import date, datetime, timedelta
 import random
+from django.utils import timezone
 
 # Setup Django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'agency_management.settings')
@@ -295,7 +296,7 @@ def create_regulations():
                 regulation_value=value,
                 description=desc,
                 last_updated_by=admin_user,
-                updated_at=datetime.now()
+                updated_at=timezone.now()
             )
             regulations_created += 1
     

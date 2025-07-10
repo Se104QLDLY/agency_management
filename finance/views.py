@@ -66,14 +66,12 @@ class PaymentViewSet(viewsets.ModelViewSet):
         """
         from django.db import transaction
         from decimal import Decimal
-        
+        from django.utils import timezone
         # Step 1: Validate incoming data using the serializer
         serializer = self.get_serializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
         validated_data = serializer.validated_data
-        
         try:
             # Step 2: Begin a database transaction
             with transaction.atomic():
@@ -82,36 +80,41 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 agency = Agency.objects.get(pk=agency_id)
                 user_profile = request.user
                 amount_collected = Decimal(validated_data['amount_collected'])
-
                 # Step 4: Create the Payment object (status defaults to 'pending')
                 payment = Payment.objects.create(
                     agency_id=agency.agency_id,
                     user_id=user_profile.user_id,
                     payment_date=validated_data.get('payment_date'),
-                    amount_collected=amount_collected
+                    amount_collected=amount_collected,
+                    created_at=timezone.now()
                 )
-                
-                # Debt update is handled when payment status is set to 'completed'
-
+                # Tuyệt đối không trừ công nợ ở đây!
+                # Debt update is handled ONLY when payment status is set to 'confirmed' in the serializer
                 # Step 6: Return a success response
                 response_serializer = PaymentDetailSerializer(payment)
                 return Response(response_serializer.data, status=status.HTTP_201_CREATED)
-
         except Agency.DoesNotExist:
             return Response({"error": "Agency not found."}, status=status.HTTP_404_NOT_FOUND)
         except User.DoesNotExist:
             return Response({"error": "User profile not found for authenticated account."}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             # Catch any other unexpected errors
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            import traceback
+            return Response({"error": str(e), "trace": traceback.format_exc()}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['patch'], url_path='status', url_name='update-status')
     def update_status(self, request, pk=None):
         """Update the status of a payment."""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"PATCH /payments/{pk}/status/ request.data: {request.data}")
         payment = self.get_object()
         serializer = self.get_serializer(payment, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            logger.error(f"PATCH /payments/{pk}/status/ errors: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         serializer.save()
+        logger.info(f"PATCH /payments/{pk}/status/ success: {serializer.data}")
         return Response(serializer.data)
 
 

@@ -5,7 +5,9 @@ from django.db.models import Sum, Max
 from authentication.exceptions import DebtLimitExceeded, OutOfStock
 from agency.models import Agency
 from .models import Item, Receipt, ReceiptDetail, Issue, IssueDetail
+import logging
 
+logger = logging.getLogger(__name__)
 
 class InventoryService:
     """
@@ -202,7 +204,78 @@ class InventoryService:
         history.sort(key=lambda x: x['date'], reverse=True)
         
         return history
+    
+    @staticmethod
+    @transaction.atomic
+    def approve_issue(issue, approved_by_user):
+        """
+        Approve issue request - this now only changes status.
+        Stock deduction and debt update will be handled by signals.
+        """
+        try:
+            if issue.status != 'processing':
+                raise ValueError(f"Cannot approve issue with status '{issue.status}'. Only 'processing' issues can be approved.")
 
+            # Get agency for validation
+            agency = Agency.objects.select_related('agency_type').get(agency_id=issue.agency_id)
+
+            # Pre-validate stock availability for all items
+            stock_issues = []
+            for detail in issue.details.all():
+                if detail.item.stock_quantity < detail.quantity:
+                    stock_issues.append({
+                        'item_name': detail.item.item_name,
+                        'requested': detail.quantity,
+                        'available': detail.item.stock_quantity
+                    })
+
+            if stock_issues:
+                # Build detailed error message
+                error_msg = "Insufficient stock for the following items:\n"
+                for issue_item in stock_issues:
+                    error_msg += f"- {issue_item['item_name']}: requested {issue_item['requested']}, available {issue_item['available']}\n"
+                logger.error(f"[approve_issue] OutOfStock: {error_msg}")
+                raise OutOfStock(error_msg)
+
+            # Pre-validate debt limit
+            new_debt = agency.debt_amount + issue.total_amount
+            if new_debt > agency.agency_type.max_debt:
+                logger.error(f"[approve_issue] DebtLimitExceeded: Approving this issue would exceed debt limit. Current debt: {agency.debt_amount}, Limit: {agency.agency_type.max_debt}, Total after approval: {new_debt}")
+                raise ValueError(
+                    f"Approving this issue would exceed debt limit. "
+                    f"Current debt: {agency.debt_amount}, Limit: {agency.agency_type.max_debt}, "
+                    f"Total after approval: {new_debt}"
+                )
+
+            # Change status to 'confirmed' - signals will handle stock deduction and debt update
+            issue.status = 'confirmed'
+            issue.save(update_fields=['status'])
+            logger.info(f"[approve_issue] Issue {issue.issue_id} approved by user {approved_by_user}. Status set to confirmed.")
+            return issue
+        except Exception as e:
+            logger.exception(f"[approve_issue] Exception: {e}")
+            raise
+
+    @staticmethod
+    @transaction.atomic
+    def reject_issue(issue, rejected_by_user, rejection_reason=None):
+        """
+        Reject issue request
+        Called when staff rejects a pending issue request
+        """
+        try:
+            if issue.status != 'processing':
+                raise ValueError(f"Cannot reject issue with status '{issue.status}'. Only 'processing' issues can be rejected.")
+
+            # Update issue status
+            issue.status = 'cancelled'
+            issue.status_reason = rejection_reason or 'Rejected by staff'
+            issue.save()
+            logger.info(f"[reject_issue] Issue {issue.issue_id} rejected by user {rejected_by_user}. Reason: {issue.status_reason}")
+            return issue
+        except Exception as e:
+            logger.exception(f"[reject_issue] Exception: {e}")
+            raise
 
 class StockCalculationService:
     """Service for calculating stock levels and movements"""
@@ -242,65 +315,3 @@ class StockCalculationService:
                 })
         
         return inconsistencies
-    
-    @staticmethod
-    @transaction.atomic
-    def approve_issue(issue, approved_by_user):
-        """
-        Approve issue request - this now only changes status.
-        Stock deduction and debt update will be handled by signals.
-        """
-        if issue.status != 'processing':
-            raise ValueError(f"Cannot approve issue with status '{issue.status}'. Only 'processing' issues can be approved.")
-        
-        # Get agency for validation
-        agency = Agency.objects.select_related('agency_type').get(agency_id=issue.agency_id)
-        
-        # Pre-validate stock availability for all items
-        stock_issues = []
-        for detail in issue.details.all():
-            if detail.item.stock_quantity < detail.quantity:
-                stock_issues.append({
-                    'item_name': detail.item.item_name,
-                    'requested': detail.quantity,
-                    'available': detail.item.stock_quantity
-                })
-        
-        if stock_issues:
-            # Build detailed error message
-            error_msg = "Insufficient stock for the following items:\n"
-            for issue_item in stock_issues:
-                error_msg += f"- {issue_item['item_name']}: requested {issue_item['requested']}, available {issue_item['available']}\n"
-            raise OutOfStock(error_msg)
-        
-        # Pre-validate debt limit
-        new_debt = agency.debt_amount + issue.total_amount
-        if new_debt > agency.agency_type.max_debt:
-            raise ValidationError(
-                f"Approving this issue would exceed debt limit. "
-                f"Current debt: {agency.debt_amount}, Limit: {agency.agency_type.max_debt}, "
-                f"Total after approval: {new_debt}"
-            )
-        
-        # Change status to 'confirmed' - signals will handle stock deduction and debt update
-        issue.status = 'confirmed'
-        issue.save(update_fields=['status'])
-        
-        return issue
-    
-    @staticmethod
-    @transaction.atomic
-    def reject_issue(issue, rejected_by_user, rejection_reason=None):
-        """
-        Reject issue request
-        Called when staff rejects a pending issue request
-        """
-        if issue.status != 'processing':
-            raise ValueError(f"Cannot reject issue with status '{issue.status}'. Only 'processing' issues can be rejected.")
-        
-        # Update issue status
-        issue.status = 'cancelled'
-        issue.status_reason = rejection_reason or 'Rejected by staff'
-        issue.save()
-        
-        return issue 

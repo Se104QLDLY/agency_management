@@ -109,15 +109,99 @@ class PaymentCreateSerializer(serializers.Serializer):
 
 
 class PaymentStatusUpdateSerializer(serializers.ModelSerializer):
+    status = serializers.CharField()  # Override to allow alias mapping and custom validation
     class Meta:
         model = Payment
         fields = ['status', 'status_reason']
 
     def validate_status(self, value):
-        allowed_statuses = ['pending', 'completed', 'failed']
+        import logging
+        logger = logging.getLogger(__name__)
+        # Tự động map các alias phổ biến về đúng status hợp lệ
+        alias_map = {
+            'paid': 'confirmed',
+            'done': 'confirmed',
+            'success': 'confirmed',
+            'completed': 'confirmed',  # Thêm alias này để đồng bộ với FE
+            'canceled': 'cancelled',
+            'cancel': 'cancelled',
+            'huy': 'cancelled',
+        }
+        if isinstance(value, str) and value.lower() in alias_map:
+            logger.info(f"validate_status: auto-mapping alias '{value}' -> '{alias_map[value.lower()]}'")
+            value = alias_map[value.lower()]
+        allowed_statuses = [choice[0] for choice in Payment.STATUS_CHOICES]
         if value not in allowed_statuses:
+            logger.warning(f"validate_status: {value} not in {allowed_statuses}")
             raise serializers.ValidationError(f"Status must be one of {allowed_statuses}")
         return value
+
+    def validate(self, data):
+        # Bắt buộc phải có trường status khi PATCH
+        if 'status' not in data:
+            raise serializers.ValidationError({'status': 'This field is required.'})
+        return data
+
+    def update(self, instance, validated_data):
+        import logging
+        import traceback
+        logger = logging.getLogger(__name__)
+        logger.debug(f"PATCH validated_data: {validated_data}")
+        logger.debug(f"PATCH instance.status: {instance.status}")
+        old_status = instance.status
+        new_status = validated_data.get('status', old_status)
+        logger.debug(f"PATCH old_status: {old_status}, new_status: {new_status}")
+
+        # Allow PATCH to update status_reason even if already confirmed/cancelled, but block status change
+        if old_status in ['confirmed', 'cancelled']:
+            if new_status != old_status:
+                logger.warning(f"[Payment PATCH] Cannot change status from {old_status} to {new_status}. Payment ID: {instance.payment_id}")
+                # Return 409 Conflict for status change attempts after confirmed/cancelled
+                raise serializers.ValidationError({
+                    "error": f"Cannot change status from {old_status} to {new_status}.",
+                    "current_status": old_status,
+                    "payment_id": instance.payment_id,
+                    "code": "CONFLICT"
+                }, code='conflict')
+            # Allow updating status_reason only
+            instance.status_reason = validated_data.get('status_reason', instance.status_reason)
+            instance.save()
+            return instance
+
+        # Only process if changing from pending to confirmed
+        if old_status == 'pending' and new_status == 'confirmed':
+            try:
+                agency = Agency.objects.get(agency_id=instance.agency_id)
+                if instance.amount_collected > agency.debt_amount:
+                    logger.warning(f"[Payment PATCH] Số tiền thu ({instance.amount_collected}) vượt công nợ ({agency.debt_amount}) của agency {agency.agency_id}")
+                    raise serializers.ValidationError({
+                        "error": f"Số tiền thu ({instance.amount_collected}) không được vượt quá công nợ hiện tại của đại lý ({agency.debt_amount}).",
+                        "current_status": old_status,
+                        "payment_id": instance.payment_id,
+                        "code": "AMOUNT_EXCEEDS_DEBT"
+                    }, code='conflict')
+                agency.debt_amount -= instance.amount_collected
+                agency.save()
+                logger.info(f"[Payment PATCH] Đã xác nhận payment {instance.payment_id}, trừ công nợ {instance.amount_collected} cho agency {agency.agency_id}")
+            except Agency.DoesNotExist:
+                logger.error(f"[Payment PATCH] Agency không tồn tại: {instance.agency_id}")
+                raise serializers.ValidationError({
+                    "error": "Agency does not exist.",
+                    "payment_id": instance.payment_id,
+                    "code": "AGENCY_NOT_FOUND"
+                }, code='not_found')
+            except Exception as e:
+                logger.error(f"[Payment PATCH] Exception: {e}\n{traceback.format_exc()}")
+                raise serializers.ValidationError({
+                    "error": f"Lỗi hệ thống: {str(e)}",
+                    "payment_id": instance.payment_id,
+                    "code": "SERVER_ERROR"
+                }, code='server_error')
+        # Update status and status_reason
+        instance.status = new_status
+        instance.status_reason = validated_data.get('status_reason', instance.status_reason)
+        instance.save()
+        return instance
 
 
 class ReportListSerializer(serializers.ModelSerializer):
@@ -196,4 +280,4 @@ class DebtSummarySerializer(serializers.Serializer):
     debt_limit = serializers.DecimalField(max_digits=15, decimal_places=2)
     debt_percentage = serializers.FloatField()
     last_payment_date = serializers.DateField(allow_null=True)
-    last_issue_date = serializers.DateField(allow_null=True) 
+    last_issue_date = serializers.DateField(allow_null=True)

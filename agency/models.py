@@ -58,8 +58,8 @@ class Agency(models.Model):
     representative = models.CharField(max_length=100, null=True, blank=True, db_column="representative")
     reception_date = models.DateField(db_column="reception_date")
     debt_amount = models.DecimalField(max_digits=15, decimal_places=2, db_column="debt_amount")
-    created_at = models.DateTimeField(null=True, blank=True, db_column="created_at")
-    updated_at = models.DateTimeField(null=True, blank=True, db_column="updated_at")
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True, db_column="created_at")
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True, db_column="updated_at")
     user_id = models.IntegerField(unique=True, null=True, blank=True, db_column="user_id")
 
     objects = AgencyQuerySet.as_manager()

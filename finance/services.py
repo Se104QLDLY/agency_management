@@ -50,11 +50,9 @@ class FinanceService:
             payment_date=payment_data.get('payment_date', timezone.now().date()),
             amount_collected=amount_collected
         )
-        
-        # Update agency debt immediately so that unit-tests see the change without relying on DB trigger execution order
-        agency.debt_amount = remaining_debt
-        agency.save()
-        
+        # Không cập nhật agency.debt_amount ở đây! Chỉ cập nhật khi PATCH sang confirmed.
+        # agency.debt_amount = remaining_debt
+        # agency.save()
         return payment, {
             'previous_debt': current_debt,
             'payment_amount': amount_collected,
@@ -254,4 +252,4 @@ class DebtValidationService:
                         'utilization_percent': float(utilization)
                     })
         
-        return sorted(near_limit, key=lambda x: x['utilization_percent'], reverse=True) 
+        return sorted(near_limit, key=lambda x: x['utilization_percent'], reverse=True)

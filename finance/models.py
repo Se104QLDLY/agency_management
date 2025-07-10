@@ -36,7 +36,7 @@ class Payment(models.Model):
         help_text="Trạng thái thanh toán"
     )
     status_reason = models.TextField(db_column="status_reason", null=True, blank=True)
-    created_at = models.DateTimeField(null=True, blank=True, db_column="created_at")
+    created_at = models.DateTimeField(null=True, blank=True, db_column="created_at", auto_now_add=True)
 
     class Meta:
         db_table = '"finance"."payment"'
