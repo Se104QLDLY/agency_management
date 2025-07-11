@@ -117,15 +117,16 @@ class PaymentStatusUpdateSerializer(serializers.ModelSerializer):
     def validate_status(self, value):
         import logging
         logger = logging.getLogger(__name__)
-        # Tự động map các alias phổ biến về đúng status hợp lệ
+        # Map aliases to match DDL status values
         alias_map = {
-            'paid': 'confirmed',
-            'done': 'confirmed',
-            'success': 'confirmed',
-            'completed': 'confirmed',  # Thêm alias này để đồng bộ với FE
-            'canceled': 'cancelled',
-            'cancel': 'cancelled',
-            'huy': 'cancelled',
+            'paid': 'completed',
+            'done': 'completed',
+            'success': 'completed',
+            'confirmed': 'completed',  # Map từ confirmed sang completed để khớp DDL
+            'canceled': 'failed',
+            'cancel': 'failed',
+            'cancelled': 'failed',
+            'huy': 'failed',
         }
         if isinstance(value, str) and value.lower() in alias_map:
             logger.info(f"validate_status: auto-mapping alias '{value}' -> '{alias_map[value.lower()]}'")
@@ -152,11 +153,11 @@ class PaymentStatusUpdateSerializer(serializers.ModelSerializer):
         new_status = validated_data.get('status', old_status)
         logger.debug(f"PATCH old_status: {old_status}, new_status: {new_status}")
 
-        # Allow PATCH to update status_reason even if already confirmed/cancelled, but block status change
-        if old_status in ['confirmed', 'cancelled']:
+        # Allow PATCH to update status_reason even if already completed/failed, but block status change
+        if old_status in ['completed', 'failed']:
             if new_status != old_status:
                 logger.warning(f"[Payment PATCH] Cannot change status from {old_status} to {new_status}. Payment ID: {instance.payment_id}")
-                # Return 409 Conflict for status change attempts after confirmed/cancelled
+                # Return 409 Conflict for status change attempts after completed/failed
                 raise serializers.ValidationError({
                     "error": f"Cannot change status from {old_status} to {new_status}.",
                     "current_status": old_status,
@@ -168,8 +169,9 @@ class PaymentStatusUpdateSerializer(serializers.ModelSerializer):
             instance.save()
             return instance
 
-        # Only process if changing from pending to confirmed
-        if old_status == 'pending' and new_status == 'confirmed':
+        # Debt calculation is now handled by database trigger when status changes to 'completed'
+        # Only validate that payment doesn't exceed debt before allowing status change
+        if old_status == 'pending' and new_status == 'completed':
             try:
                 agency = Agency.objects.get(agency_id=instance.agency_id)
                 if instance.amount_collected > agency.debt_amount:
@@ -180,9 +182,7 @@ class PaymentStatusUpdateSerializer(serializers.ModelSerializer):
                         "payment_id": instance.payment_id,
                         "code": "AMOUNT_EXCEEDS_DEBT"
                     }, code='conflict')
-                agency.debt_amount -= instance.amount_collected
-                agency.save()
-                logger.info(f"[Payment PATCH] Đã xác nhận payment {instance.payment_id}, trừ công nợ {instance.amount_collected} cho agency {agency.agency_id}")
+                logger.info(f"[Payment PATCH] Validation passed for payment {instance.payment_id}, debt update will be handled by trigger")
             except Agency.DoesNotExist:
                 logger.error(f"[Payment PATCH] Agency không tồn tại: {instance.agency_id}")
                 raise serializers.ValidationError({

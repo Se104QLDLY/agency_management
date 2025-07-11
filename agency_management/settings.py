@@ -88,9 +88,9 @@ WSGI_APPLICATION = "agency_management.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": "QuanLyDaiLy",
+        "NAME": "qldl",
         "USER": "postgres",
-        "PASSWORD": "12082005",
+        "PASSWORD": " ",
         "HOST": "localhost",
         "PORT": "5432",
         "OPTIONS": {

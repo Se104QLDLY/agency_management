@@ -8,13 +8,11 @@ from .models import Payment
 
 @receiver(post_save, sender=Payment)
 def update_agency_debt_on_payment(sender, instance: Payment, created: bool, **kwargs):
-    """Update agency debt when payment is created, with proper validation."""
-    if not created:
-        return
-        
-    # Only process confirmed payments
-    if instance.status != 'confirmed':
-        return
+    """
+    DISABLED: Debt update is now handled by database trigger f_update_debt_amount()
+    This signal is kept for reference but does nothing to avoid double deduction.
+    """
+    return  # Early return to disable this signal
         
     with transaction.atomic():
         from agency.models import Agency

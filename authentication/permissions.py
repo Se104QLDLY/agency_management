@@ -94,6 +94,7 @@ class BaseScopePermission(permissions.BasePermission):
                 'agency:read', 'agency:write',
                 'inventory:read', 'inventory:write', 
                 'finance:read', 'finance:write',
+                'config:read',  # Allow staff to read regulations
                 'report:read', 'profile:read', 'profile:write'
             ],
             'agent': [
@@ -128,6 +129,11 @@ class UserPermission(BaseScopePermission):
 class ConfigPermission(BaseScopePermission):
     """Permission for system configuration endpoints"""
     required_scopes = ['config:read', 'config:write']
+
+
+class ConfigReadPermission(BaseScopePermission):
+    """Permission for read-only system configuration endpoints"""
+    required_scopes = ['config:read']
 
 
 class ProfilePermission(BaseScopePermission):

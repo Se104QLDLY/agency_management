@@ -14,8 +14,8 @@ from .managers import ReportManager
 class Payment(models.Model):
     STATUS_CHOICES = [
         ('pending', 'Đang chờ xử lý'),
-        ('confirmed', 'Đã xác nhận'),
-        ('cancelled', 'Đã hủy'),
+        ('completed', 'Đã hoàn thành'),
+        ('failed', 'Thất bại'),
     ]
     
     payment_id = models.AutoField(primary_key=True, db_column="payment_id")
@@ -55,8 +55,8 @@ class Payment(models.Model):
         if self.amount_collected and self.amount_collected <= 0:
             raise ValidationError({'amount_collected': _('Payment amount must be greater than 0.')})
             
-        # Validate payment doesn't exceed agency debt (only for confirmed payments)
-        if self.status == 'confirmed':
+        # Validate payment doesn't exceed agency debt (only for completed payments)
+        if self.status == 'completed':
             try:
                 agency = Agency.objects.get(pk=self.agency_id)
                 if self.amount_collected > agency.debt_amount:

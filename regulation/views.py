@@ -8,19 +8,31 @@ from .serializers import (
     RegulationListSerializer, RegulationDetailSerializer, 
     RegulationUpdateSerializer, RegulationHistorySerializer
 )
-from authentication.permissions import CookieJWTAuthentication, ConfigPermission
+from authentication.permissions import CookieJWTAuthentication, ConfigPermission, ConfigReadPermission
 
 
 class RegulationViewSet(viewsets.ViewSet):
     """
     ViewSet for managing system regulations
-    GET /api/v1/regulation/ - List all regulations
-    GET /api/v1/regulation/{key}/ - Get regulation by key
-    PUT /api/v1/regulation/{key}/ - Update regulation value
-    GET /api/v1/regulation/history/ - Get regulation change history
+    GET /api/v1/regulation/ - List all regulations (staff can read)
+    GET /api/v1/regulation/{key}/ - Get regulation by key (staff can read)
+    PUT /api/v1/regulation/{key}/ - Update regulation value (admin only)
+    GET /api/v1/regulation/history/ - Get regulation change history (staff can read)
     """
     authentication_classes = [CookieJWTAuthentication]
-    permission_classes = [ConfigPermission]
+    permission_classes = []  # Will be set by get_permissions()
+    
+    def get_permissions(self):
+        """
+        Return different permissions based on HTTP method
+        GET requests: Staff can read (ConfigReadPermission)
+        PUT requests: Admin only (ConfigPermission)
+        """
+        if self.request.method == 'GET':
+            permission_classes = [ConfigReadPermission]
+        else:
+            permission_classes = [ConfigPermission]
+        return [permission() for permission in permission_classes]
     
     def list(self, request):
         """List all regulations"""

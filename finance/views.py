@@ -89,7 +89,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                     created_at=timezone.now()
                 )
                 # Tuyệt đối không trừ công nợ ở đây!
-                # Debt update is handled ONLY when payment status is set to 'confirmed' in the serializer
+                # Debt update is handled ONLY when payment status is set to 'completed' in the serializer
                 # Step 6: Return a success response
                 response_serializer = PaymentDetailSerializer(payment)
                 return Response(response_serializer.data, status=status.HTTP_201_CREATED)

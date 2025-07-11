@@ -50,7 +50,7 @@ class FinanceService:
             payment_date=payment_data.get('payment_date', timezone.now().date()),
             amount_collected=amount_collected
         )
-        # Không cập nhật agency.debt_amount ở đây! Chỉ cập nhật khi PATCH sang confirmed.
+        # Không cập nhật agency.debt_amount ở đây! Chỉ cập nhật khi PATCH sang completed.
         # agency.debt_amount = remaining_debt
         # agency.save()
         return payment, {
