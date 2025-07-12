@@ -239,6 +239,190 @@ class AgencyViewSet(viewsets.ModelViewSet):
             }
         })
 
+    # ========================================
+    # AGENCY APPROVAL PROCESS ENDPOINTS
+    # ========================================
+
+    @action(detail=False, methods=['post'], permission_classes=[AllowAny])
+    def register(self, request):
+        """
+        Public agency self-registration endpoint
+        Creates agency with user_id = NULL (pending approval)
+        
+        POST /api/v1/agency/register/
+        Body: { agency_name, phone_number, address, email, representative, agency_type_id, district_id }
+        Response: { agency_id, message, status: "pending" }
+        """
+        from .serializers import AgencyRegistrationSerializer
+        
+        serializer = AgencyRegistrationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        with transaction.atomic():
+            agency = serializer.save()
+            
+            # TODO: Send notification to admin about new registration
+            # notify_new_registration.delay(agency.agency_id)
+            
+        return Response({
+            'agency_id': agency.agency_id,
+            'code': f"HS{agency.agency_id:04d}",
+            'message': 'Hồ sơ đăng ký đã được gửi thành công. Vui lòng chờ admin duyệt.',
+            'status': 'pending',
+            'submitted_at': agency.created_at.isoformat() if agency.created_at else None
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'])
+    def pending(self, request):
+        """
+        List agencies pending approval (admin only)
+        Only returns agencies with user_id = NULL
+        
+        GET /api/v1/agency/pending/
+        Response: [{ id, code, name, type, district, phone, email, registration_date, days_pending }]
+        """
+        from .serializers import AgencyPendingSerializer
+        
+        # Filter agencies pending approval
+        pending_agencies = Agency.objects.filter(
+            user_id__isnull=True
+        ).select_related('agency_type', 'district').order_by('-created_at')
+        
+        serializer = AgencyPendingSerializer(pending_agencies, many=True)
+        
+        return Response({
+            'count': pending_agencies.count(),
+            'results': serializer.data
+        })
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        """
+        Approve agency and create user account (admin only)
+        Updates user_id from NULL to new user ID
+        
+        POST /api/v1/agency/{id}/approve/
+        Body: { username, password, full_name? }
+        Response: { message, user_id, agency_id, status: "approved" }
+        """
+        from .serializers import AgencyApprovalSerializer
+        from authentication.models import Account, User
+        from django.contrib.auth.hashers import make_password
+        
+        agency = self.get_object()
+        
+        # Check if already approved
+        if agency.user_id is not None:
+            return Response({
+                'error': 'Đại lý này đã được duyệt trước đó.',
+                'agency_id': agency.agency_id,
+                'current_user_id': agency.user_id
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate approval data
+        serializer = AgencyApprovalSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        try:
+            with transaction.atomic():
+                # Create account following DDL auth.account structure
+                account = Account.objects.create(
+                    username=serializer.validated_data['username'],
+                    password_hash=make_password(serializer.validated_data['password']),
+                    account_role='agent'  # Per DDL CHECK constraint
+                )
+                
+                # Create user profile following DDL auth.user structure
+                full_name = serializer.validated_data.get('full_name') or agency.representative or agency.agency_name
+                user = User.objects.create(
+                    account=account,
+                    full_name=full_name[:100],  # Respect DDL VARCHAR(100) constraint
+                    email=agency.email,
+                    phone_number=agency.phone_number,
+                    address=agency.address[:255] if agency.address else None  # Respect DDL VARCHAR(255)
+                )
+                
+                # Link agency to user (key step - changes NULL to user_id)
+                agency.user_id = user.user_id
+                agency.save(update_fields=['user_id', 'updated_at'])
+                
+                # TODO: Send approval notification email
+                # send_approval_notification.delay(agency.agency_id, user.user_id)
+                
+        except Exception as e:
+            return Response({
+                'error': f'Lỗi khi tạo tài khoản: {str(e)}',
+                'agency_id': agency.agency_id
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        return Response({
+            'message': 'Đã duyệt hồ sơ và tạo tài khoản thành công.',
+            'agency_id': agency.agency_id,
+            'user_id': user.user_id,
+            'username': account.username,
+            'status': 'approved',
+            'approved_at': timezone.now().isoformat()
+        })
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        """
+        Reject agency application (admin only)
+        Deletes the agency record and optionally sends notification
+        
+        POST /api/v1/agency/{id}/reject/
+        Body: { reason, send_email? }
+        Response: { message, agency_id, reason }
+        """
+        from .serializers import AgencyRejectSerializer
+        
+        agency = self.get_object()
+        
+        # Check if already approved (cannot reject approved agencies)
+        if agency.user_id is not None:
+            return Response({
+                'error': 'Không thể từ chối đại lý đã được duyệt.',
+                'agency_id': agency.agency_id,
+                'current_user_id': agency.user_id
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate rejection data
+        serializer = AgencyRejectSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Store data before deletion
+        agency_data = {
+            'agency_id': agency.agency_id,
+            'agency_name': agency.agency_name,
+            'email': agency.email,
+            'phone_number': agency.phone_number,
+            'reason': serializer.validated_data['reason']
+        }
+        
+        try:
+            with transaction.atomic():
+                # TODO: Send rejection notification email before deletion
+                if serializer.validated_data.get('send_email', True) and agency.email:
+                    # send_rejection_notification.delay(agency_data)
+                    pass
+                
+                # Delete agency record (DDL allows CASCADE)
+                agency.delete()
+                
+        except Exception as e:
+            return Response({
+                'error': f'Lỗi khi từ chối hồ sơ: {str(e)}',
+                'agency_id': agency.agency_id
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        return Response({
+            'message': 'Đã từ chối hồ sơ đăng ký.',
+            'agency_id': agency_data['agency_id'],
+            'agency_name': agency_data['agency_name'],
+            'reason': agency_data['reason'],
+            'rejected_at': timezone.now().isoformat()
+        })
+
 
 class StaffAgencyViewSet(viewsets.ModelViewSet):
     """
@@ -349,4 +533,124 @@ class StaffAgencyViewSet(viewsets.ModelViewSet):
             'agency_id': int(agency_id),
             'staff_count': len(staff_list),
             'staff': staff_list
+        })
+
+    @action(detail=False, methods=['get'], url_path='unassigned-agents')
+    def unassigned_agents(self, request):
+        """
+        Get list of agent users without agency assignment
+        URL: /api/v1/agency/unassigned-agents/
+        Response: [{ user_id, full_name, email, username, created_at }]
+        """
+        from authentication.models import User, Account
+        
+        # Query users with role='agent' but no agency assigned
+        unassigned_users = User.objects.select_related('account').filter(
+            account__account_role='agent'
+        ).exclude(
+            user_id__in=Agency.objects.filter(user_id__isnull=False).values_list('user_id', flat=True)
+        ).order_by('-created_at')
+        
+        # Serialize user data
+        users_data = []
+        for user in unassigned_users:
+            users_data.append({
+                'user_id': user.user_id,
+                'full_name': user.full_name,
+                'email': user.email,
+                'username': user.account.username,
+                'phone_number': user.phone_number,
+                'address': user.address,
+                'created_at': user.created_at.isoformat() if user.created_at else None
+            })
+        
+        return Response({
+            'count': len(users_data),
+            'results': users_data
+        })
+
+    @action(detail=False, methods=['post'], url_path='assign-profile')
+    def assign_profile(self, request):
+        """
+        Create agency profile for existing agent user
+        POST /api/v1/agency/assign-profile/
+        Body: {
+            user_id: number,
+            agency_name: string,
+            agency_type_id: number,
+            district_id: number,
+            phone_number: string,
+            address: string,
+            email?: string,
+            representative?: string
+        }
+        """
+        from .serializers import AgencyAssignmentSerializer
+        from authentication.models import User
+        
+        # Validate input data
+        serializer = AgencyAssignmentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        user_id = serializer.validated_data['user_id']
+        
+        try:
+            with transaction.atomic():
+                # Verify user exists and is an agent
+                try:
+                    user = User.objects.select_related('account').get(user_id=user_id)
+                    if user.account.account_role != 'agent':
+                        return Response({
+                            'error': f'User {user_id} không phải là agent.'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                except User.DoesNotExist:
+                    return Response({
+                        'error': f'User {user_id} không tồn tại.'
+                    }, status=status.HTTP_404_NOT_FOUND)
+                
+                # Check if user already has an agency
+                if Agency.objects.filter(user_id=user_id).exists():
+                    return Response({
+                        'error': f'User {user.full_name} đã được cấp hồ sơ đại lý.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                # Get related objects
+                agency_type = AgencyType.objects.get(agency_type_id=serializer.validated_data['agency_type_id'])
+                district = District.objects.get(district_id=serializer.validated_data['district_id'])
+                
+                # Create agency profile
+                agency = Agency.objects.create(
+                    agency_name=serializer.validated_data['agency_name'],
+                    agency_type=agency_type,
+                    district=district,
+                    phone_number=serializer.validated_data['phone_number'],
+                    address=serializer.validated_data['address'],
+                    email=serializer.validated_data.get('email') or user.email,
+                    representative=serializer.validated_data.get('representative') or user.full_name,
+                    reception_date=timezone.now().date(),
+                    debt_amount=0,
+                    user_id=user_id  # KEY: Link to existing user
+                )
+                
+                print(f"Successfully created agency {agency.agency_id} for user {user.full_name} (ID: {user_id})")
+                
+        except AgencyType.DoesNotExist:
+            return Response({
+                'error': 'Loại đại lý không tồn tại.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except District.DoesNotExist:
+            return Response({
+                'error': 'Quận/huyện không tồn tại.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                'error': f'Lỗi khi tạo hồ sơ đại lý: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        return Response({
+            'message': f'Đã cấp hồ sơ đại lý thành công cho {user.full_name}.',
+            'agency_id': agency.agency_id,
+            'user_id': user_id,
+            'agency_name': agency.agency_name,
+            'assigned_at': timezone.now().isoformat()
         })

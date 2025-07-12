@@ -115,8 +115,10 @@ def handle_issue_detail_created(sender, instance: IssueDetail, created: bool, **
         # 2. Validate price markup (must equal 102 % of base price)
         # ------------------------------------------------------------
         expected_price = _price_with_markup(item.price)
-        if instance.unit_price != expected_price:
-            raise ValidationError("Giá xuất phải bằng 102% giá nhập")
+        # Allow small floating point precision difference (within 0.01)
+        price_diff = abs(instance.unit_price - expected_price)
+        if price_diff > Decimal('0.01'):
+            raise ValidationError(f"Giá xuất phải bằng 102% giá nhập. Mong đợi: {expected_price}, Nhận được: {instance.unit_price}")
 
         # ------------------------------------------------------------
         # 3. Validate stock availability (but don't deduct yet)
@@ -188,14 +190,14 @@ def recalc_issue_total(sender, instance, **kwargs):
 
 @receiver(post_save, sender=Issue)
 def handle_issue_status_change(sender, instance: Issue, created: bool, **kwargs):
-    """Handle stock deduction and debt update when issue status changes to 'confirmed'."""
+    """Handle stock deduction and debt update when issue status changes to 'delivered'."""
     
     # Skip on creation - only handle status changes
     if created:
         return
         
-    # Only process when status becomes 'confirmed'
-    if instance.status != 'confirmed':
+    # Only process when status becomes 'delivered' (agency confirms delivery)
+    if instance.status != 'delivered':
         return
         
     # Check if this status change was already processed

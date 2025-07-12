@@ -6,7 +6,7 @@ from django.shortcuts import get_object_or_404
 from .models import Regulation
 from .serializers import (
     RegulationListSerializer, RegulationDetailSerializer, 
-    RegulationUpdateSerializer, RegulationHistorySerializer
+    RegulationUpdateSerializer, RegulationCreateSerializer, RegulationHistorySerializer
 )
 from authentication.permissions import CookieJWTAuthentication, ConfigPermission, ConfigReadPermission
 
@@ -15,6 +15,7 @@ class RegulationViewSet(viewsets.ViewSet):
     """
     ViewSet for managing system regulations
     GET /api/v1/regulation/ - List all regulations (staff can read)
+    POST /api/v1/regulation/ - Create new regulation (admin only)
     GET /api/v1/regulation/{key}/ - Get regulation by key (staff can read)
     PUT /api/v1/regulation/{key}/ - Update regulation value (admin only)
     GET /api/v1/regulation/history/ - Get regulation change history (staff can read)
@@ -26,7 +27,7 @@ class RegulationViewSet(viewsets.ViewSet):
         """
         Return different permissions based on HTTP method
         GET requests: Staff can read (ConfigReadPermission)
-        PUT requests: Admin only (ConfigPermission)
+        POST/PUT requests: Admin only (ConfigPermission)
         """
         if self.request.method == 'GET':
             permission_classes = [ConfigReadPermission]
@@ -39,6 +40,19 @@ class RegulationViewSet(viewsets.ViewSet):
         regulations = Regulation.objects.all()
         serializer = RegulationListSerializer(regulations, many=True)
         return Response(serializer.data)
+    
+    def create(self, request):
+        """Create new regulation"""
+        serializer = RegulationCreateSerializer(
+            data=request.data,
+            context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        regulation = serializer.save()
+        
+        # Return created regulation
+        detail_serializer = RegulationDetailSerializer(regulation)
+        return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
     
     def retrieve(self, request, pk=None):
         """Get regulation by key"""

@@ -237,10 +237,14 @@ class IssueViewSet(viewsets.ModelViewSet):
         
         try:
             if new_status == 'confirmed' and issue.status == 'processing':
-                # DEBUG: Kiểm tra method của InventoryService
-                print('DEBUG InventoryService:', dir(InventoryService))
-                # Staff approving a pending request - validate stock and deduct
+                # Staff approving a pending request - validate stock only
                 InventoryService.approve_issue(issue, request.user)
+                serializer = self.get_serializer(issue)
+                return Response(serializer.data)
+                
+            elif new_status == 'delivered' and issue.status == 'confirmed':
+                # Agency confirming delivery - this will trigger stock deduction and debt update
+                InventoryService.confirm_delivery(issue, request.user)
                 serializer = self.get_serializer(issue)
                 return Response(serializer.data)
                 

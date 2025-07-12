@@ -76,9 +76,11 @@ class Payment(models.Model):
 class Report(models.Model):
     SALES = 'sales'
     DEBT = 'debt'
+    INVENTORY = 'inventory'
     REPORT_TYPE_CHOICES = [
         (SALES, 'Sales'),
         (DEBT, 'Debt'),
+        (INVENTORY, 'Inventory'),
     ]
 
     report_id = models.AutoField(primary_key=True, db_column="report_id")

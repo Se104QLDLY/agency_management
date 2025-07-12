@@ -209,8 +209,8 @@ class InventoryService:
     @transaction.atomic
     def approve_issue(issue, approved_by_user):
         """
-        Approve issue request - this now only changes status.
-        Stock deduction and debt update will be handled by signals.
+        Staff approve issue request - only validate stock and change status to 'confirmed'.
+        No stock deduction or debt update at this stage.
         """
         try:
             if issue.status != 'processing':
@@ -219,7 +219,7 @@ class InventoryService:
             # Get agency for validation
             agency = Agency.objects.select_related('agency_type').get(agency_id=issue.agency_id)
 
-            # Pre-validate stock availability for all items
+            # Pre-validate stock availability for all items (but don't deduct)
             stock_issues = []
             for detail in issue.details.all():
                 if detail.item.stock_quantity < detail.quantity:
@@ -237,7 +237,7 @@ class InventoryService:
                 logger.error(f"[approve_issue] OutOfStock: {error_msg}")
                 raise OutOfStock(error_msg)
 
-            # Pre-validate debt limit
+            # Pre-validate debt limit (but don't update debt)
             new_debt = agency.debt_amount + issue.total_amount
             if new_debt > agency.agency_type.max_debt:
                 logger.error(f"[approve_issue] DebtLimitExceeded: Approving this issue would exceed debt limit. Current debt: {agency.debt_amount}, Limit: {agency.agency_type.max_debt}, Total after approval: {new_debt}")
@@ -247,9 +247,10 @@ class InventoryService:
                     f"Total after approval: {new_debt}"
                 )
 
-            # Change status to 'confirmed' - signals will handle stock deduction and debt update
+            # Change status to 'confirmed' - NO stock deduction or debt update
             issue.status = 'confirmed'
-            issue.save(update_fields=['status'])
+            issue.status_reason = 'Đã xác nhận bởi staff - chờ agency nhận hàng'
+            issue.save(update_fields=['status', 'status_reason'])
             logger.info(f"[approve_issue] Issue {issue.issue_id} approved by user {approved_by_user}. Status set to confirmed.")
             return issue
         except Exception as e:
@@ -275,6 +276,27 @@ class InventoryService:
             return issue
         except Exception as e:
             logger.exception(f"[reject_issue] Exception: {e}")
+            raise
+
+    @staticmethod
+    @transaction.atomic
+    def confirm_delivery(issue, confirmed_by_user):
+        """
+        Agency confirm delivery - change status to 'delivered'.
+        This will trigger stock deduction and debt update via signals.
+        """
+        try:
+            if issue.status != 'confirmed':
+                raise ValueError(f"Cannot confirm delivery for issue with status '{issue.status}'. Only 'confirmed' issues can be delivered.")
+
+            # Change status to 'delivered' - signals will handle stock deduction and debt update
+            issue.status = 'delivered'
+            issue.status_reason = 'Xác nhận nhận hàng bởi agency'
+            issue.save(update_fields=['status', 'status_reason'])
+            logger.info(f"[confirm_delivery] Issue {issue.issue_id} delivery confirmed by user {confirmed_by_user}. Status set to delivered.")
+            return issue
+        except Exception as e:
+            logger.exception(f"[confirm_delivery] Exception: {e}")
             raise
 
 class StockCalculationService:

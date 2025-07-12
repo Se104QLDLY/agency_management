@@ -343,7 +343,7 @@ class IssueStatusUpdateSerializer(serializers.ModelSerializer):
         fields = ['status', 'status_reason']
 
     def validate_status(self, value):
-        allowed_statuses = ['processing', 'confirmed', 'postponed', 'cancelled']
+        allowed_statuses = ['processing', 'confirmed', 'delivered', 'postponed', 'cancelled']
         if value not in allowed_statuses:
             raise serializers.ValidationError(f"Status must be one of {allowed_statuses}")
         return value 

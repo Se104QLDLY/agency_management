@@ -6,6 +6,8 @@ from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, Sum, Max
 from django.db import connection
+from django.utils import timezone
+from datetime import datetime, date
 from .models import Payment, Report
 from .serializers import (
     PaymentListSerializer, PaymentDetailSerializer, PaymentCreateSerializer, PaymentStatusUpdateSerializer,
@@ -13,11 +15,11 @@ from .serializers import (
     DebtTransactionSerializer, DebtSummarySerializer
 )
 from agency.models import Agency
-from inventory.models import Issue
+from inventory.models import Issue, Item
 from authentication.permissions import CookieJWTAuthentication, FinancePermission
 from .services import FinanceService
+from .export_utils import ReportExporter
 from authentication.models import User
-from django.utils import timezone
 
 
 class PaymentViewSet(viewsets.ModelViewSet):
@@ -124,6 +126,9 @@ class ReportViewSet(viewsets.ModelViewSet):
     GET /api/v1/finance/reports/ - List reports
     POST /api/v1/finance/reports/ - Create new report
     GET /api/v1/finance/reports/{id}/ - Report detail
+    GET /api/v1/finance/reports/generate/ - Generate report with filters
+    GET /api/v1/finance/reports/{id}/export_excel/ - Export to Excel
+    GET /api/v1/finance/reports/{id}/export_pdf/ - Export to PDF
     """
     queryset = Report.objects.all()
     authentication_classes = [CookieJWTAuthentication]
@@ -148,6 +153,157 @@ class ReportViewSet(viewsets.ModelViewSet):
         self.perform_create(serializer)
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'])
+    def generate(self, request):
+        """Generate report with filters"""
+        report_type = request.data.get('report_type')
+        start_date = request.data.get('start_date')
+        end_date = request.data.get('end_date')
+        agency_id = request.data.get('agency_id')
+        
+        print(f"DEBUG: Generating report - type: {report_type}, start: {start_date}, end: {end_date}, agency: {agency_id}")
+        
+        if not report_type:
+            return Response({'error': 'report_type is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Get user for created_by - request.user is already a User object
+            user = request.user
+            print(f"DEBUG: user = {user}, type = {type(user)}")
+            
+            if not hasattr(user, 'user_id'):
+                print(f"DEBUG: user has no user_id attribute")
+                return Response({'error': 'Invalid user object'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            print(f"DEBUG: user.user_id = {user.user_id}")
+            
+            # Parse dates
+            if start_date:
+                start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+            if end_date:
+                end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+            
+            print(f"DEBUG: Parsed dates - start: {start_date}, end: {end_date}")
+            
+            # Generate report based on type
+            if report_type == 'sales':
+                print(f"DEBUG: Generating sales report")
+                report = self._generate_sales_report(date.today(), user.user_id, agency_id, start_date, end_date)
+            elif report_type == 'debt':
+                print(f"DEBUG: Generating debt report")
+                report = self._generate_debt_report(start_date or date.today(), user.user_id, agency_id, start_date, end_date)
+            elif report_type == 'inventory':
+                print(f"DEBUG: Generating inventory report")
+                report = self._generate_inventory_report(start_date or date.today(), user.user_id)
+            else:
+                return Response({'error': 'Invalid report_type'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            print(f"DEBUG: Report generated successfully - ID: {report.report_id}")
+            
+            serializer = ReportDetailSerializer(report)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            print(f"DEBUG ERROR: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def _generate_sales_report(self, for_date, created_by, agency_id=None, start_date=None, end_date=None):
+        """Generate sales report from Issue data with status='delivered'"""
+        # Get sales data from Issue table - use date range if provided, otherwise use for_date
+        if start_date and end_date:
+            sales_query = Issue.objects.filter(
+                issue_date__gte=start_date,
+                issue_date__lte=end_date,
+                status='delivered'  # Chỉ tính phiếu đã giao hàng
+            )
+        else:
+            # Fallback to original logic using for_date
+            sales_query = Issue.objects.filter(
+                issue_date__year=for_date.year,
+                issue_date__month=for_date.month,
+                status='delivered'  # Chỉ tính phiếu đã giao hàng
+            )
+        
+        if agency_id:
+            sales_query = sales_query.filter(agency_id=agency_id)
+        
+        # Get unique agency IDs and preload agencies
+        agency_ids = set(sales_query.values_list('agency_id', flat=True))
+        agencies = {agency.agency_id: agency.agency_name for agency in Agency.objects.filter(agency_id__in=agency_ids)}
+        
+        # Aggregate by agency
+        agency_sales = {}
+        for issue in sales_query:
+            agency_id = issue.agency_id
+            if agency_id not in agencies:
+                continue  # Skip if agency doesn't exist
+                
+            if agency_id not in agency_sales:
+                agency_sales[agency_id] = {
+                    'agency_id': agency_id,
+                    'agency_name': agencies[agency_id],
+                    'total_sales': 0,
+                    'total_issues': 0
+                }
+            agency_sales[agency_id]['total_sales'] += float(issue.total_amount)
+            agency_sales[agency_id]['total_issues'] += 1
+        
+        # Create report
+        return Report.objects.create(
+            report_type='sales',
+            report_date=for_date,
+            data={'sales': list(agency_sales.values())},
+            created_by=created_by
+        )
+
+    def _generate_debt_report(self, for_date, created_by, agency_id=None, start_date=None, end_date=None):
+        """Generate debt report using improved logic"""
+        return Report.objects.create_debt_report(for_date, created_by, agency_id, start_date, end_date)
+
+    def _generate_inventory_report(self, for_date, created_by):
+        """Generate inventory report"""
+        return Report.objects.create_inventory_report(for_date, created_by)
+
+    @action(detail=True, methods=['get'])
+    def export_excel(self, request, pk=None):
+        """Export report to Excel"""
+        report = self.get_object()
+        
+        # Determine title based on report type
+        titles = {
+            'sales': 'Báo cáo doanh số',
+            'debt': 'Báo cáo công nợ',
+            'inventory': 'Báo cáo tồn kho'
+        }
+        title = titles.get(report.report_type, 'Báo cáo')
+        
+        exporter = ReportExporter(report.data, report.report_type, title)
+        return exporter.export_to_excel()
+
+    @action(detail=True, methods=['get'])
+    def export_pdf(self, request, pk=None):
+        """Export report to PDF"""
+        report = self.get_object()
+        
+        # Determine title based on report type
+        titles = {
+            'sales': 'Báo cáo doanh số',
+            'debt': 'Báo cáo công nợ',
+            'inventory': 'Báo cáo tồn kho'
+        }
+        title = titles.get(report.report_type, 'Báo cáo')
+        
+        exporter = ReportExporter(report.data, report.report_type, title)
+        return exporter.export_to_pdf()
+
+    @action(detail=False, methods=['get'])
+    def agencies(self, request):
+        """Get list of agencies for dropdown selection"""
+        agencies = Agency.objects.all().values('agency_id', 'agency_name')
+        return Response(list(agencies))
 
 
 class DebtViewSet(viewsets.ViewSet):

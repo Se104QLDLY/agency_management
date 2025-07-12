@@ -29,6 +29,25 @@ class RegulationDetailSerializer(serializers.ModelSerializer):
         return None
 
 
+class RegulationCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Regulation
+        fields = ['regulation_key', 'regulation_value', 'description']
+        
+    def create(self, validated_data):
+        user = self.context['request'].user
+        
+        # Create new regulation
+        regulation = Regulation.objects.create(
+            regulation_key=validated_data['regulation_key'],
+            regulation_value=validated_data['regulation_value'],
+            description=validated_data.get('description', ''),
+            last_updated_by=user.user_id
+        )
+        
+        return regulation
+
+
 class RegulationUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Regulation

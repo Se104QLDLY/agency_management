@@ -102,6 +102,7 @@ class Issue(models.Model):
     STATUS_CHOICES = [
         ('processing', 'Đang xử lý'),
         ('confirmed', 'Đã xác nhận'),
+        ('delivered', 'Đã giao hàng'),
         ('postponed', 'Tạm hoãn'),
         ('cancelled', 'Đã hủy'),
     ]
